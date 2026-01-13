@@ -1,0 +1,167 @@
+{
+  "ohos-module-entry": {
+    "SELECT_TARGET": "default",
+    "MODULE_BUILD_DIR": "F:\\code\\System_Software_design\\File_Manage\\entry\\build",
+    "TARGETS": {
+      "default": {
+        "SOURCE_ROOT": "F:\\code\\System_Software_design\\File_Manage\\entry\\src\\main",
+        "RESOURCES_PATH": [
+          "F:\\code\\System_Software_design\\File_Manage\\entry\\src\\main\\resources"
+        ],
+        "BUILD_PATH": {
+          "OUTPUT_PATH": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\outputs\\default",
+          "INTERMEDIA_PATH": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\intermediates",
+          "JS_ASSETS_PATH": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\intermediates\\loader_out\\default",
+          "JS_LITE_ASSETS_PATH": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\intermediates\\loader_out_lite\\default",
+          "RES_PATH": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\intermediates\\res\\default",
+          "RES_PROFILE_PATH": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\intermediates\\res\\default\\resources\\base\\profile",
+          "ETS_SUPER_VISUAL_PATH": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\cache\\default\\default@CompileArkTS\\esmodule",
+          "JS_SUPER_VISUAL_PATH": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\cache\\default\\default@CompileJS\\jsbundle",
+          "WORKER_LOADER": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\intermediates\\loader\\default\\loader.json",
+          "MANIFEST_JSON": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\intermediates\\manifest\\default",
+          "OUTPUT_METADATA_JSON": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\intermediates\\hap_metadata\\default\\output_metadata.json",
+          "SOURCE_MAP_DIR": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\intermediates\\source_map\\default"
+        },
+        "BUILD_OPTION": {
+          "debuggable": true
+        }
+      },
+      "ohosTest": {
+        "SOURCE_ROOT": "F:\\code\\System_Software_design\\File_Manage\\entry\\src\\ohosTest",
+        "RESOURCES_PATH": [
+          "F:\\code\\System_Software_design\\File_Manage\\entry\\src\\ohosTest\\resources"
+        ],
+        "BUILD_PATH": {
+          "OUTPUT_PATH": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\outputs\\ohosTest",
+          "INTERMEDIA_PATH": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\intermediates",
+          "JS_ASSETS_PATH": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\intermediates\\loader_out\\ohosTest",
+          "JS_LITE_ASSETS_PATH": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\intermediates\\loader_out_lite\\ohosTest",
+          "RES_PATH": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\intermediates\\res\\ohosTest",
+          "RES_PROFILE_PATH": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\intermediates\\res\\ohosTest\\resources\\base\\profile",
+          "ETS_SUPER_VISUAL_PATH": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\cache\\ohosTest\\ohosTest@OhosTestCompileArkTS\\esmodule",
+          "JS_SUPER_VISUAL_PATH": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\cache\\ohosTest\\ohosTest@OhosTestCompileJS\\jsbundle",
+          "WORKER_LOADER": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\intermediates\\loader\\ohosTest\\loader.json",
+          "MANIFEST_JSON": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\intermediates\\manifest\\ohosTest",
+          "OUTPUT_METADATA_JSON": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\intermediates\\hap_metadata\\ohosTest\\output_metadata.json",
+          "SOURCE_MAP_DIR": "F:\\code\\System_Software_design\\File_Manage\\entry\\build\\default\\intermediates\\source_map\\ohosTest"
+        },
+        "BUILD_OPTION": {
+          "debuggable": true
+        }
+      }
+    },
+    "BUILD_OPTION": {
+      "default-default": {
+        "debuggable": true,
+        "copyFrom": "default",
+        "arkOptions": {},
+        "name": "debug"
+      }
+    },
+    "BUILD_PROFILE_OPT": {
+      "apiType": "stageMode",
+      "buildOption": {
+        "arkOptions": {}
+      },
+      "buildOptionSet": [
+        {
+          "name": "release",
+          "arkOptions": {
+            "obfuscation": {
+              "ruleOptions": {
+                "enable": true,
+                "files": [
+                  "./obfuscation-rules.txt"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "name": "default"
+        },
+        {
+          "name": "debug"
+        }
+      ],
+      "targets": [
+        {
+          "name": "default"
+        },
+        {
+          "name": "ohosTest"
+        }
+      ]
+    },
+    "BUILD_CACHE_DIR": ""
+  },
+  "ohos-project": {
+    "SELECT_PRODUCT_NAME": "default",
+    "MODULE_BUILD_DIR": "F:\\code\\System_Software_design\\File_Manage\\build",
+    "BUNDLE_NAME": "com.example.filesmanger",
+    "BUILD_PATH": {
+      "OUTPUT_PATH": "F:\\code\\System_Software_design\\File_Manage\\build\\outputs\\default"
+    },
+    "MODULES": [
+      {
+        "name": "entry",
+        "srcPath": "F:\\code\\System_Software_design\\File_Manage\\entry",
+        "targets": [
+          {
+            "name": "default",
+            "applyToProducts": [
+              "default"
+            ]
+          }
+        ],
+        "belongProjectPath": "F:\\code\\System_Software_design\\File_Manage"
+      }
+    ],
+    "PROFILE_OPT": {
+      "app": {
+        "signingConfigs": [],
+        "products": [
+          {
+            "name": "default",
+            "signingConfig": "default",
+            "compatibleSdkVersion": "5.0.5(17)",
+            "targetSdkVersion": "6.0.0(20)",
+            "runtimeOS": "HarmonyOS"
+          }
+        ],
+        "buildModeSet": [
+          {
+            "name": "debug"
+          },
+          {
+            "name": "release"
+          }
+        ]
+      },
+      "modules": [
+        {
+          "name": "entry",
+          "srcPath": "./entry",
+          "targets": [
+            {
+              "name": "default",
+              "applyToProducts": [
+                "default"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "CONFIG_PROPERTIES": {
+      "enableSignTask": true,
+      "skipNativeIncremental": false,
+      "hvigor.keepDependency": true
+    },
+    "OVERALL_PROJECT_PATHS": [
+      "F:\\code\\System_Software_design\\File_Manage"
+    ],
+    "BUILD_CACHE_DIR": ""
+  },
+  "version": 1
+}
