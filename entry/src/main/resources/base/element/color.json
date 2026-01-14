@@ -1,0 +1,30 @@
+{
+  "color": [
+    {
+      "name": "start_window_background",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "text_color",
+      "value": "#182431"
+    },
+    {
+      "name": "picture_background",
+      "value": "#0D182431"
+    },
+
+    {
+      "name": "page_background",
+      "value": "#F5F5F5"
+    },
+    {
+      "name": "list_item_background",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "delete_button",
+      "value": "#FF3B30"
+    }
+  ]
+}
+
