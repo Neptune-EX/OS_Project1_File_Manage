@@ -119,6 +119,5 @@ export struct ApplicationFileTab {
       .margin({ top: $r('app.float.default_100') })
     }
     .width('100%')
-    .height('100%')
   }
 }

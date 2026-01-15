@@ -41,6 +41,14 @@
       "value": "管理文件"
     },
     {
+      "name": "bar3",
+      "value": "文件去重"
+    },
+    {
+      "name": "bar4",
+      "value": "回收站"
+    },
+    {
       "name": "select_photo",
       "value": "从图库中选择一张图片展示"
     },

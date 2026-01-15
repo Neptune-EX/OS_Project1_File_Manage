@@ -41,6 +41,14 @@
       "value": "Public file"
     },
     {
+      "name": "bar3",
+      "value": "Deduplication"
+    },
+    {
+      "name": "bar4",
+      "value": "Trash"
+    },
+    {
       "name": "select_photo",
       "value": "Select an image from the gallery to display."
     },
