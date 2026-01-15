@@ -704,7 +704,7 @@ export class publicFilesTab extends ViewPU {
                                         Button.height(28);
                                         Button.fontSize(11);
                                         Button.borderRadius(14);
-                                        Button.backgroundColor({ "id": 16777283, "type": 10001, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+                                        Button.backgroundColor({ "id": 16777246, "type": 10001, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
                                         Button.fontColor(Color.White);
                                     }, Button);
                                     Button.pop();

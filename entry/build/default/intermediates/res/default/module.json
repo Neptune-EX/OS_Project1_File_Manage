@@ -6,8 +6,8 @@
 		"versionName":	"1.0.0",
 		"icon":	"$media:app_icon",
 		"label":	"$string:app_name",
-		"apiReleaseType":	"Release",
-		"compileSdkVersion":	"6.0.0.47",
+		"apiReleaseType":	"Beta1",
+		"compileSdkVersion":	"6.0.2.129",
 		"targetAPIVersion":	60000020,
 		"minAPIVersion":	50005017,
 		"compileSdkType":	"HarmonyOS",
@@ -43,15 +43,15 @@
 						"actions":	["action.system.home"]
 					}],
 				"descriptionId":	16777218,
-				"iconId":	16777287,
+				"iconId":	16777281,
 				"labelId":	16777219,
-				"startWindowIconId":	16777288,
-				"startWindowBackgroundId":	16777233
+				"startWindowIconId":	16777286,
+				"startWindowBackgroundId":	16777250
 			}],
 		"packageName":	"entry",
 		"virtualMachine":	"ark12.0.6.0",
 		"compileMode":	"esmodule",
 		"dependencies":	[],
-		"descriptionId":	16777227
+		"descriptionId":	16777236
 	}
 }

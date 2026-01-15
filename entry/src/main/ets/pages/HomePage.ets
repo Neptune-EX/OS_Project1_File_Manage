@@ -15,6 +15,7 @@
 
 import { ApplicationFileTab } from '../view/ApplicationFileTab';
 import { publicFilesTab } from '../view/PublicFilesTab';
+import { DeduplicationTab } from '../view/DeduplicationTab';
 
 @Entry
 @Component
@@ -61,8 +62,17 @@ struct HomePage {
           .indicator({marginTop : $r('app.float.default_8')})
           .labelStyle({font : {size : $r('app.float.default_16')}})
         )
+
+        TabContent() {
+          DeduplicationTab()
+        }
+        .height('100%')
+        .tabBar(new SubTabBarStyle($r('app.string.bar3'))
+          .indicator({marginTop : $r('app.float.default_8')})
+          .labelStyle({font : {size : $r('app.float.default_16')}})
+        )
       }
-      .barWidth($r('app.float.default_200'))
+      .barWidth('100%')
       .barHeight($r('app.float.default_56'))
       .width('100%')
     }

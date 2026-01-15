@@ -78,65 +78,65 @@ export class ApplicationFileTab extends ViewPU {
             // === 新增：文件名输入区域 ===
             Text.create('文件名称：');
             // === 新增：文件名输入区域 ===
-            Text.width({ "id": 16777250, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Text.width({ "id": 16777267, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
             // === 新增：文件名输入区域 ===
-            Text.height({ "id": 16777246, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Text.height({ "id": 16777263, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
             // === 新增：文件名输入区域 ===
-            Text.fontColor({ "id": 16777234, "type": 10001, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Text.fontColor({ "id": 16777251, "type": 10001, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
             // === 新增：文件名输入区域 ===
             Text.fontWeight(500);
             // === 新增：文件名输入区域 ===
-            Text.fontSize({ "id": 16777242, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Text.fontSize({ "id": 16777259, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
             // === 新增：文件名输入区域 ===
             Text.fontFamily('HarmonyHeiTi-Medium');
             // === 新增：文件名输入区域 ===
-            Text.lineHeight({ "id": 16777246, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Text.lineHeight({ "id": 16777263, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
             // === 新增：文件名输入区域 ===
             Text.textAlign(TextAlign.Start);
             // === 新增：文件名输入区域 ===
             Text.margin({
-                top: { "id": 16777239, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" },
-                bottom: { "id": 16777239, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" },
-                right: { "id": 16777262, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" }
+                top: { "id": 16777256, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" },
+                bottom: { "id": 16777256, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" },
+                right: { "id": 16777279, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" }
             });
         }, Text);
         // === 新增：文件名输入区域 ===
         Text.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             TextInput.create({ placeholder: '输入文件名（如：myfile.txt）', text: this.fileName });
-            TextInput.width({ "id": 16777254, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
-            TextInput.height({ "id": 16777256, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
-            TextInput.borderRadius({ "id": 16777262, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
-            TextInput.backgroundColor({ "id": 16777233, "type": 10001, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            TextInput.width({ "id": 16777271, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            TextInput.height({ "id": 16777273, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            TextInput.borderRadius({ "id": 16777279, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            TextInput.backgroundColor({ "id": 16777250, "type": 10001, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
             TextInput.padding({ left: 10, right: 10 });
             TextInput.onChange((value: string) => {
                 this.fileName = value;
             });
-            TextInput.margin({ bottom: { "id": 16777242, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" } });
+            TextInput.margin({ bottom: { "id": 16777259, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" } });
         }, TextInput);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Text.create({ "id": 16777229, "type": 10003, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
-            Text.width({ "id": 16777250, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
-            Text.height({ "id": 16777246, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
-            Text.fontColor({ "id": 16777234, "type": 10001, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Text.create({ "id": 16777242, "type": 10003, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Text.width({ "id": 16777267, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Text.height({ "id": 16777263, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Text.fontColor({ "id": 16777251, "type": 10001, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
             Text.fontWeight(500);
-            Text.fontSize({ "id": 16777242, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Text.fontSize({ "id": 16777259, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
             Text.fontFamily('HarmonyHeiTi-Medium');
-            Text.lineHeight({ "id": 16777246, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Text.lineHeight({ "id": 16777263, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
             Text.textAlign(TextAlign.Start);
             Text.margin({
-                top: { "id": 16777239, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" },
-                bottom: { "id": 16777239, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" },
-                right: { "id": 16777262, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" }
+                top: { "id": 16777256, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" },
+                bottom: { "id": 16777256, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" },
+                right: { "id": 16777279, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" }
             });
         }, Text);
         Text.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             TextArea.create({ placeholder: '输入文件内容', text: this.content });
-            TextArea.width({ "id": 16777254, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
-            TextArea.height({ "id": 16777240, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
-            TextArea.borderRadius({ "id": 16777248, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
-            TextArea.backgroundColor({ "id": 16777233, "type": 10001, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            TextArea.width({ "id": 16777271, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            TextArea.height({ "id": 16777257, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            TextArea.borderRadius({ "id": 16777265, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            TextArea.backgroundColor({ "id": 16777250, "type": 10001, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
             TextArea.enableKeyboardOnFocus(false);
             TextArea.onChange((value: string) => {
                 this.content = value;
@@ -196,12 +196,12 @@ export class ApplicationFileTab extends ViewPU {
             //   .height($r('app.float.default_139'))
             //   .backgroundColor($r('app.color.start_window_background'))
             //   .borderRadius($r('app.float.default_24'))
-            Column.margin({ top: { "id": 16777236, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" } });
+            Column.margin({ top: { "id": 16777253, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" } });
         }, Column);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Button.createWithLabel({ "id": 16777222, "type": 10003, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
-            Button.width({ "id": 16777253, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
-            Button.height({ "id": 16777256, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Button.width({ "id": 16777270, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Button.height({ "id": 16777273, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
             Button.onClick(() => {
                 writeFile(this.content, this.fileName);
                 this.content = '';

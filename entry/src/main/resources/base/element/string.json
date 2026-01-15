@@ -41,6 +41,10 @@
       "value": "Public file"
     },
     {
+      "name": "bar3",
+      "value": "文件去重"
+    },
+    {
       "name": "select_photo",
       "value": "Select an image from the gallery to display."
     },
