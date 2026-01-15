@@ -17,6 +17,7 @@ import { ApplicationFileTab } from '../view/ApplicationFileTab';
 import { publicFilesTab } from '../view/PublicFilesTab';
 import { DeduplicationTab } from '../view/DeduplicationTab';
 import { TrashTab } from '../view/TrashTab';
+import { TestDataTab } from '../view/TestDataTab';
 
 @Entry
 @Component
@@ -85,6 +86,18 @@ struct HomePage {
         }
         .height('100%')
         .tabBar(new SubTabBarStyle($r('app.string.bar4'))
+          .indicator({marginTop : $r('app.float.default_8')})
+          .labelStyle({font : {size : $r('app.float.default_16')}})
+        )
+
+        TabContent() {
+          Scroll() {
+            TestDataTab()
+          }
+          .height($r('app.float.default_680'))
+        }
+        .height('100%')
+        .tabBar(new SubTabBarStyle($r('app.string.bar5'))
           .indicator({marginTop : $r('app.float.default_8')})
           .labelStyle({font : {size : $r('app.float.default_16')}})
         )

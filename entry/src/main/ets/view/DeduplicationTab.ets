@@ -3,6 +3,8 @@
  */
 
 import { DuplicateScanner, DuplicateGroup, DuplicateFileInfo, ScanResult } from '../common/utils/DuplicateScanner';
+import { fileIo } from '@kit.CoreFileKit';
+import { common } from '@kit.AbilityKit';
 
 @Component
 export struct DeduplicationTab {
@@ -18,12 +20,56 @@ export struct DeduplicationTab {
   @State selectedGroupHash: string = '';
   @State selectedKeepFile: string = '';
 
+  // 查看文件内容相关状态
+  @State showFileContentDialog: boolean = false;
+  @State viewingFileName: string = '';
+  @State viewingFileContent: string = '';
+
   private scanner: DuplicateScanner | null = null;
+  private filesDir: string = '';
 
   aboutToAppear() {
     const context = this.getUIContext().getHostContext() as Context;
     this.scanner = DuplicateScanner.getInstance(context);
     this.lastScanTime = this.scanner.getLastScanTimeFormatted();
+
+    // 获取文件目录路径
+    const uiAbilityContext = context as common.UIAbilityContext;
+    this.filesDir = uiAbilityContext.filesDir;
+  }
+
+  // 查看文件内容
+  private viewFileContent(filename: string) {
+    try {
+      const filePath = `${this.filesDir}/${filename}`;
+      const file = fileIo.openSync(filePath, fileIo.OpenMode.READ_ONLY);
+      const stat = fileIo.statSync(filePath);
+
+      // 限制读取大小，避免内存问题
+      const maxReadSize = 10 * 1024; // 最多读取10KB
+      const readSize = Math.min(stat.size, maxReadSize);
+      const buffer = new ArrayBuffer(readSize);
+      fileIo.readSync(file.fd, buffer);
+      fileIo.closeSync(file);
+
+      // 转换为字符串
+      const uint8Array = new Uint8Array(buffer);
+      let content = '';
+      for (let i = 0; i < uint8Array.length; i++) {
+        content += String.fromCharCode(uint8Array[i]);
+      }
+
+      // 如果文件被截断，添加提示
+      if (stat.size > maxReadSize) {
+        content += `\n\n... (文件过大，仅显示前 ${maxReadSize} 字节)`;
+      }
+
+      this.viewingFileName = filename;
+      this.viewingFileContent = content;
+      this.showFileContentDialog = true;
+    } catch (error) {
+      this.showToast(`读取文件失败: ${error}`, 'error');
+    }
   }
 
   // 显示消息提示
@@ -418,19 +464,31 @@ export struct DeduplicationTab {
                         .alignItems(HorizontalAlign.Start)
                         .layoutWeight(1)
 
-                        if (fileIndex !== 0) {
-                          Button('保留此文件')
+                        Row({ space: 4 }) {
+                          Button('查看')
                             .onClick(() => {
-                              this.selectedGroupHash = group.hash;
-                              this.selectedKeepFile = file.filename;
-                              this.confirmAction = 'dedup_group';
-                              this.showConfirmDialog = true;
+                              this.viewFileContent(file.filename);
                             })
                             .height(28)
                             .fontSize(11)
-                            .backgroundColor('#007AFF')
+                            .backgroundColor('#8E8E93')
                             .fontColor(Color.White)
                             .borderRadius(14)
+
+                          if (fileIndex !== 0) {
+                            Button('保留此文件')
+                              .onClick(() => {
+                                this.selectedGroupHash = group.hash;
+                                this.selectedKeepFile = file.filename;
+                                this.confirmAction = 'dedup_group';
+                                this.showConfirmDialog = true;
+                              })
+                              .height(28)
+                              .fontSize(11)
+                              .backgroundColor('#007AFF')
+                              .fontColor(Color.White)
+                              .borderRadius(14)
+                          }
                         }
                       }
                       .width('100%')
@@ -535,6 +593,89 @@ export struct DeduplicationTab {
         .backgroundColor(Color.White)
         .borderRadius(16)
         .position({ x: '7.5%', y: '30%' })
+      }
+
+      // === 文件内容查看对话框 ===
+      if (this.showFileContentDialog) {
+        Stack()
+          .width('100%')
+          .height('100%')
+          .backgroundColor('rgba(0, 0, 0, 0.5)')
+          .onClick(() => {
+            this.showFileContentDialog = false;
+          })
+          .position({ x: 0, y: 0 })
+
+        Column() {
+          // 标题栏
+          Row() {
+            Text('文件内容')
+              .fontSize(20)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#333333')
+              .layoutWeight(1)
+
+            Button('×')
+              .fontSize(24)
+              .fontColor('#666666')
+              .backgroundColor(Color.Transparent)
+              .onClick(() => {
+                this.showFileContentDialog = false;
+              })
+          }
+          .width('100%')
+          .padding({ left: 20, right: 20, top: 15, bottom: 15 })
+          .border({ width: { bottom: 1 }, color: '#E0E0E0' })
+
+          // 文件名
+          Row() {
+            Text('文件名:')
+              .fontSize(14)
+              .fontColor('#666666')
+              .width('20%')
+            Text(this.viewingFileName)
+              .fontSize(14)
+              .fontColor('#007AFF')
+              .fontWeight(FontWeight.Medium)
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .width('80%')
+          }
+          .width('100%')
+          .padding({ left: 20, right: 20, top: 12 })
+
+          // 文件内容
+          Scroll() {
+            Text(this.viewingFileContent)
+              .fontSize(13)
+              .fontColor('#333333')
+              .fontFamily('monospace')
+              .width('100%')
+          }
+          .width('100%')
+          .height(300)
+          .padding(16)
+          .margin({ left: 20, right: 20, top: 12, bottom: 12 })
+          .backgroundColor('#F8F8F8')
+          .borderRadius(8)
+
+          // 关闭按钮
+          Button('关闭')
+            .onClick(() => {
+              this.showFileContentDialog = false;
+            })
+            .width('90%')
+            .height(44)
+            .fontSize(16)
+            .backgroundColor('#007AFF')
+            .fontColor(Color.White)
+            .borderRadius(10)
+            .margin({ bottom: 20 })
+        }
+        .width('90%')
+        .backgroundColor(Color.White)
+        .borderRadius(16)
+        .position({ x: '5%', y: '10%' })
       }
     }
     .width('100%')

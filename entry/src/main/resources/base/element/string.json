@@ -49,6 +49,10 @@
       "value": "Trash"
     },
     {
+      "name": "bar5",
+      "value": "Test Data"
+    },
+    {
       "name": "select_photo",
       "value": "Select an image from the gallery to display."
     },
