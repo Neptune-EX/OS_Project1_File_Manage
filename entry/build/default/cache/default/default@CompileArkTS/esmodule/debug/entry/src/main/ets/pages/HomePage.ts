@@ -27,39 +27,39 @@ class HomePage extends ViewPU {
     initialRender() {
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Column.create();
-            Column.backgroundColor({ "id": 16777232, "type": 10001, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Column.backgroundColor({ "id": 16777249, "type": 10001, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
             Column.justifyContent(FlexAlign.Center);
             Column.width('100%');
-            Column.padding({ top: { "id": 16777258, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" } });
+            Column.padding({ top: { "id": 16777275, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" } });
         }, Column);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Column.create();
-            Column.width({ "id": 16777255, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
-            Column.height({ "id": 16777259, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Column.width({ "id": 16777272, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Column.height({ "id": 16777276, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
         }, Column);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Text.create({ "id": 16777231, "type": 10003, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
-            Text.width({ "id": 16777253, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
-            Text.height({ "id": 16777257, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Text.create({ "id": 16777244, "type": 10003, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Text.width({ "id": 16777270, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Text.height({ "id": 16777274, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
             Text.textAlign(TextAlign.Start);
-            Text.fontSize({ "id": 16777251, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Text.fontSize({ "id": 16777268, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
             Text.fontFamily('HarmonyHeiTi-Bold');
-            Text.fontColor({ "id": 16777234, "type": 10001, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
-            Text.lineHeight({ "id": 16777257, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Text.fontColor({ "id": 16777251, "type": 10001, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Text.lineHeight({ "id": 16777274, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
             Text.fontWeight(700);
             Text.margin({
-                top: { "id": 16777261, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" },
-                bottom: { "id": 16777262, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" },
-                left: { "id": 16777248, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" },
-                right: { "id": 16777248, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" }
+                top: { "id": 16777278, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" },
+                bottom: { "id": 16777279, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" },
+                left: { "id": 16777265, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" },
+                right: { "id": 16777265, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" }
             });
         }, Text);
         Text.pop();
         Column.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Tabs.create();
-            Tabs.barWidth({ "id": 16777244, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
-            Tabs.barHeight({ "id": 16777259, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Tabs.barWidth({ "id": 16777261, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+            Tabs.barHeight({ "id": 16777276, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
             Tabs.width('100%');
         }, Tabs);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
@@ -81,15 +81,15 @@ class HomePage extends ViewPU {
                 }
             });
             TabContent.tabBar(new SubTabBarStyle({ "id": 16777220, "type": 10003, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" })
-                .indicator({ marginTop: { "id": 16777262, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" } })
-                .labelStyle({ font: { size: { "id": 16777242, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" } } }));
+                .indicator({ marginTop: { "id": 16777279, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" } })
+                .labelStyle({ font: { size: { "id": 16777259, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" } } }));
         }, TabContent);
         TabContent.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             TabContent.create(() => {
                 this.observeComponentCreation2((elmtId, isInitialRender) => {
                     Scroll.create();
-                    Scroll.height({ "id": 16777260, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
+                    Scroll.height({ "id": 16777277, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" });
                 }, Scroll);
                 {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
@@ -110,8 +110,8 @@ class HomePage extends ViewPU {
             });
             TabContent.height('100%');
             TabContent.tabBar(new SubTabBarStyle({ "id": 16777221, "type": 10003, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" })
-                .indicator({ marginTop: { "id": 16777262, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" } })
-                .labelStyle({ font: { size: { "id": 16777242, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" } } }));
+                .indicator({ marginTop: { "id": 16777279, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" } })
+                .labelStyle({ font: { size: { "id": 16777259, "type": 10002, params: [], "bundleName": "com.example.filesmanger", "moduleName": "entry" } } }));
         }, TabContent);
         TabContent.pop();
         Tabs.pop();

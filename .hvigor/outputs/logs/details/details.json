@@ -2,14 +2,19 @@
   "HVIGOR_OHOS_PLUGIN": {
     "MODULES": [
       {
-        "MODULE_NAME": "1043bfc77febe75fafec0c4309faccf1",
+        "MODULE_NAME": "923fe53966c6cd9343e11af776cd4b05be315ea4b200b02e4d5dfb0f929b73bf",
         "API_TYPE": "stageMode",
+        "INCLUDE_IN_BUILD": true,
+        "IS_COMMAND_LINE_ENTRY_MODULE": true,
+        "MODULE_TYPE": "entry",
         "INCREMENTAL_TASKS": {
-          "COMPILE_ARKTS": true
-        }
+          "COMPILE_ARKTS": false
+        },
+        "IS_INCREMENTAL_MODULE": false
       }
     ],
     "NATIVE_COMPILER": "Default",
+    "IS_FULL_BUILD": true,
     "BUILD_MODE": "debug"
   },
   "HVIGOR": {
@@ -18,59 +23,51 @@
     "IS_PARALLEL": true,
     "IS_HVIGORFILE_TYPE_CHECK": false,
     "TASK_TIME": {
-      "1043bfc77febe75fafec0c4309faccf1": {
-        "PreBuild": 268545500,
-        "CreateModuleInfo": 571700,
-        "GenerateMetadata": 2631600,
-        "ConfigureCmake": 288900,
-        "MergeProfile": 5372200,
-        "PreCheckSyscap": 501200,
-        "GeneratePkgContextInfo": 3587200,
-        "ProcessIntegratedHsp": 670800,
-        "BuildNativeWithCmake": 345600,
-        "MakePackInfo": 3603400,
-        "SyscapTransform": 2935900,
-        "ProcessProfile": 187713700,
-        "ProcessRouterMap": 3620700,
-        "ProcessShareConfig": 5659800,
-        "ProcessStartupConfig": 978000,
-        "BuildNativeWithNinja": 649900,
-        "GenerateLoaderJson": 21166400,
-        "CompileResource": 569352900,
-        "BuildJS": 2257100,
-        "CompileArkTS": 1530692500,
-        "GeneratePkgModuleJson": 2895300,
-        "ProcessCompiledResources": 912900,
-        "PackageHap": 82050300,
-        "PackingCheck": 8523500,
-        "SignHap": 1793200,
-        "CollectDebugSymbol": 2542700,
-        "assembleHap": 749600
+      "923fe53966c6cd9343e11af776cd4b05be315ea4b200b02e4d5dfb0f929b73bf": {
+        "clean": 25859625,
+        "PreBuild": 85388875,
+        "CreateModuleInfo": 154167,
+        "GenerateMetadata": 648334,
+        "ConfigureCmake": 51042,
+        "MergeProfile": 827833,
+        "CreateBuildProfile": 345792,
+        "PreCheckSyscap": 49750,
+        "GeneratePkgContextInfo": 673250,
+        "ProcessIntegratedHsp": 132917,
+        "BuildNativeWithCmake": 77542,
+        "MakePackInfo": 784833,
+        "SyscapTransform": 163375,
+        "ProcessProfile": 43254416,
+        "ProcessRouterMap": 744125,
+        "ProcessShareConfig": 519042,
+        "ProcessStartupConfig": 171708,
+        "BuildNativeWithNinja": 248291,
+        "ProcessResource": 1306459,
+        "GenerateLoaderJson": 1648166,
+        "ProcessLibs": 1123291,
+        "CompileResource": 164655750,
+        "DoNativeStrip": 903667,
+        "BuildJS": 416583,
+        "CacheNativeLibs": 332482708,
+        "CompileArkTS": 2940093458,
+        "GeneratePkgModuleJson": 686291,
+        "ProcessCompiledResources": 168958,
+        "PackageHap": 21669459,
+        "PackingCheck": 1059667,
+        "SignHap": 223917,
+        "CollectDebugSymbol": 167125,
+        "assembleHap": 83708
       }
     },
     "APIS": [
-      "getHvigorConfig",
-      "getRootNodeDescriptor",
-      "getChildNode",
-      "getNodeByName",
-      "getAllNodes",
-      "getRootNode",
-      "getNodeName",
-      "getNodePath",
-      "subNodes",
-      "getExtraOption",
-      "getExtParam",
-      "getExtParams",
-      "getProperty",
-      "getProperties",
-      "getParameter",
-      "getProductName",
-      "nodesEvaluated",
-      "getCommandEntryTask",
-      "getStartParams"
+      "getProperty"
     ],
+    "CONFIG_EXPERIMENT": {
+      "ENABLE_MODULE_SKIP": false,
+      "ENABLE_CPP_FUNCTION_LEVEL_INCREMENTAL": false
+    },
     "CONFIG_PROPERTIES": {},
-    "TOTAL_TIME": 2872529900,
-    "BUILD_ID": "202601131653204280"
+    "TOTAL_TIME": 3385843958,
+    "BUILD_ID": "202601151849081680"
   }
 }

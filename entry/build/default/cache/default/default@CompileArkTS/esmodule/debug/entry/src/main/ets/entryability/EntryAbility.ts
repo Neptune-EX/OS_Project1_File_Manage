@@ -3,7 +3,7 @@ import type Want from "@ohos:app.ability.Want";
 import type AbilityConstant from "@ohos:app.ability.AbilityConstant";
 import hilog from "@ohos:hilog";
 import type window from "@ohos:window";
-import type { BusinessError as BusinessError } from "@ohos:base";
+import type { BusinessError } from "@ohos:base";
 export default class EntryAbility extends UIAbility {
     onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
         hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
