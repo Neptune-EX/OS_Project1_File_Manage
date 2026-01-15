@@ -174,13 +174,13 @@ export class DuplicateScanner {
   }
 
   /**
-   * 获取所有文件列表（排除系统文件）
+   * 获取所有文件列表（只获取.txt文件，排除系统文件）
    */
   private getAllFiles(): string[] {
     try {
       const files = fileIo.listFileSync(this.filesDir);
-      // 排除隐藏文件和系统文件
-      return files.filter(f => !f.startsWith('.') && !f.startsWith('_'));
+      // 只获取.txt文件，排除隐藏文件和系统文件
+      return files.filter(f => !f.startsWith('.') && !f.startsWith('_') && f.endsWith('.txt'));
     } catch (error) {
       console.error(`获取文件列表失败: ${error}`);
       return [];
