@@ -107,7 +107,10 @@ export class FileManager {
         try {
             const filePath = this.filesDir + '/' + filename;
             // 检查文件是否存在
-            if (!fileIo.accessSync(filePath)) {
+            try {
+                fileIo.accessSync(filePath);
+            }
+            catch (e) {
                 console.log(`文件不存在: ${filename}`);
                 return null;
             }
@@ -148,6 +151,11 @@ export class FileManager {
                     const filePath = `${filesDir}/${file}`;
                     // 获取文件信息
                     const stat = fileIo.statSync(filePath);
+                    // 跳过目录，只显示文件
+                    if (stat.isDirectory()) {
+                        console.log(`[getAllFilesWithInfo] 跳过目录: ${file}`);
+                        continue;
+                    }
                     // 格式化为可读信息
                     const sizeReadable = this.formatFileSize(stat.size);
                     const mtimeFormatted = this.formatDate(stat.mtime);

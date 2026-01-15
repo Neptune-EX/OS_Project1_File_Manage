@@ -1623,7 +1623,7 @@
       "error": false
     },
     "/Users/tassel/Documents/Project/OS/File_Manage/entry/src/main/ets/common/utils/FileManager.ets": {
-      "mtimeMs": 1768293580000,
+      "mtimeMs": 1768462207483.9878,
       "children": [
         "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/api/@ohos.file.fs.d.ts",
         "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/api/@ohos.app.ability.common.d.ts",
@@ -1648,7 +1648,7 @@
       "error": false
     },
     "/Users/tassel/Documents/Project/OS/File_Manage/entry/src/main/ets/common/utils/DeleteFile.ets": {
-      "mtimeMs": 1768284200000,
+      "mtimeMs": 1768465440727.534,
       "children": [
         "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/api/@ohos.file.fs.d.ts",
         "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/api/@ohos.app.ability.common.d.ts"
@@ -2168,7 +2168,7 @@
       "error": false
     },
     "/Users/tassel/Documents/Project/OS/File_Manage/entry/src/main/ets/view/DeduplicationTab.ets": {
-      "mtimeMs": 1768392885088.201,
+      "mtimeMs": 1768463829202.6226,
       "children": [
         "/Users/tassel/Documents/Project/OS/File_Manage/entry/src/main/ets/common/utils/DeduplicationManager.ets",
         "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/api/@ohos.file.picker.d.ts"
@@ -2179,10 +2179,11 @@
       "error": false
     },
     "/Users/tassel/Documents/Project/OS/File_Manage/entry/src/main/ets/common/utils/DeduplicationManager.ets": {
-      "mtimeMs": 1768392726175.8816,
+      "mtimeMs": 1768465452256.281,
       "children": [
         "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/api/@ohos.file.fs.d.ts",
-        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/api/@ohos.app.ability.common.d.ts"
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/api/@ohos.app.ability.common.d.ts",
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/api/@ohos.util.d.ts"
       ],
       "parent": [
         "/Users/tassel/Documents/Project/OS/File_Manage/entry/src/main/ets/view/DeduplicationTab.ets"
@@ -2217,6 +2218,14 @@
       ],
       "parent": [
         "/Users/tassel/Documents/Project/OS/File_Manage/entry/src/main/ets/view/DeduplicationTab.ets"
+      ],
+      "error": false
+    },
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/api/@ohos.util.d.ts": {
+      "mtimeMs": 1767164242000,
+      "children": [],
+      "parent": [
+        "/Users/tassel/Documents/Project/OS/File_Manage/entry/src/main/ets/common/utils/DeduplicationManager.ets"
       ],
       "error": false
     }

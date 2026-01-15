@@ -246,7 +246,7 @@ struct HomePage {
     .width('100%')
     .padding({ top: $r('app.float.default_48') })
   }
-}ÀÔrD“¶../view/PublicFilesTab¸../view/DeduplicationTabº../view/ApplicationFileTabÔrE—ªassertions¨external¢id¤meta±moduleSideEffectsªresolvedByµsyntheticNamedExportsAÂÙY/Users/tassel/Documents/Project/OS/File_Manage/entry/src/main/ets/view/PublicFilesTab.etsAÃªoh-resolveÂEAÂÙ[/Users/tassel/Documents/Project/OS/File_Manage/entry/src/main/ets/view/DeduplicationTab.etsAÃªoh-resolveÂEAÂÙ]/Users/tassel/Documents/Project/OS/File_Manage/entry/src/main/ets/view/ApplicationFileTab.etsAÃªoh-resolveÂ“ÔrF–§version¤fileªsourceRoot§sources¥names¨mappings«HomePage.js ‘¬HomePage.etsÜ œ‘”    ‘” ˜”   ” ”	 	” ” ”# #”? ?”Ì@ Ì@˜”   ” ”	 	” ” ” ”7 7”8 8˜”   ” ”	 	” ” ”! !”; ;”< <’” ” ‘”  ‘” <‘” ’” ” 
+}ÀÔrD“º../view/ApplicationFileTab¸../view/DeduplicationTab¶../view/PublicFilesTabÔrE—ªassertions¨external¢id¤meta±moduleSideEffectsªresolvedByµsyntheticNamedExportsAÂÙ]/Users/tassel/Documents/Project/OS/File_Manage/entry/src/main/ets/view/ApplicationFileTab.etsAÃªoh-resolveÂEAÂÙ[/Users/tassel/Documents/Project/OS/File_Manage/entry/src/main/ets/view/DeduplicationTab.etsAÃªoh-resolveÂEAÂÙY/Users/tassel/Documents/Project/OS/File_Manage/entry/src/main/ets/view/PublicFilesTab.etsAÃªoh-resolveÂ“ÔrF–§version¤fileªsourceRoot§sources¥names¨mappings«HomePage.js ‘¬HomePage.etsÜ œ‘”    ‘” ˜”   ” ”	 	” ” ”# #”? ?”Ì@ Ì@˜”   ” ”	 	” ” ” ”7 7”8 8˜”   ” ”	 	” ” ”! !”; ;”< <’” ” ‘”  ‘” <‘” ’” ” 
 ”” ” 
 ” ÌN”" ÌN˜” ” 
 ” ÌO”! ÌO”" ÌO”+ ÌO”, ÌO”2 ÌO$–” ” 
