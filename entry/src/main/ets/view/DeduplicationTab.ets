@@ -2,9 +2,18 @@
  * 文件去重Tab页面 - 实现重复文件扫描、展示和去重功能
  */
 
-import { DuplicateScanner, DuplicateGroup, DuplicateFileInfo, ScanResult } from '../common/utils/DuplicateScanner';
+import { DuplicateScanner, DuplicateGroup, DuplicateFileInfo, ScanResult, ScanCallbacks } from '../common/utils/DuplicateScanner';
 import { fileIo } from '@kit.CoreFileKit';
 import { common } from '@kit.AbilityKit';
+
+// 动态统计数据接口
+interface DynamicStats {
+  scannedFiles: number;
+  duplicateGroups: number;
+  totalDuplicates: number;
+  totalWasteSize: number;
+  totalWasteSizeReadable: string;
+}
 
 @Component
 export struct DeduplicationTab {
@@ -19,6 +28,20 @@ export struct DeduplicationTab {
   @State confirmAction: string = ''; // 'dedup_all' | 'dedup_group'
   @State selectedGroupHash: string = '';
   @State selectedKeepFile: string = '';
+
+  // 可视化相关状态
+  @State scanProgress: number = 0;  // 扫描进度 0-100
+  @State scanProgressText: string = '';  // 进度文本 "当前/总数"
+  @State isRealTimeScanning: boolean = false;  // 是否正在实时扫描
+  @State dynamicGroups: DuplicateGroup[] = [];  // 动态更新的重复组列表
+  @State dynamicStats: DynamicStats = {
+    scannedFiles: 0,
+    duplicateGroups: 0,
+    totalDuplicates: 0,
+    totalWasteSize: 0,
+    totalWasteSizeReadable: '0 B'
+  };
+  @State displayGroups: DuplicateGroup[] = [];  // 当前显示的重复组列表
 
   // 查看文件内容相关状态
   @State showFileContentDialog: boolean = false;
@@ -87,15 +110,51 @@ export struct DeduplicationTab {
     if (!this.scanner || this.isScanning) return;
 
     this.isScanning = true;
+    this.isRealTimeScanning = true;
+    this.scanProgress = 0;
+    this.scanProgressText = '';
+    this.dynamicGroups = [];
+    this.displayGroups = [];  // 清空显示列表
     this.showToast('正在扫描文件...', 'info');
 
     try {
-      // 使用 setTimeout 让 UI 有时间更新
-      setTimeout(() => {
-        if (this.scanner) {
-          this.scanResult = this.scanner.fullScan();
-          this.lastScanTime = this.scanner.getLastScanTimeFormatted();
+      if (this.scanner) {
+        // 创建回调对象
+        const callbacks: ScanCallbacks = {
+          onProgress: (current: number, total: number) => {
+            this.scanProgress = Math.floor((current / total) * 100);
+            this.scanProgressText = `${current}/${total}`;
+          },
+          onGroupFound: (group: DuplicateGroup) => {
+            // 插入新组并按 wasteSize 降序排序
+            this.dynamicGroups = [...this.dynamicGroups, group]
+              .sort((a, b) => b.wasteSize - a.wasteSize);
+
+            // 更新显示列表
+            this.displayGroups = this.dynamicGroups;
+
+            // 更新动态统计
+            this.dynamicStats = {
+              scannedFiles: this.scanProgressText.split('/')[0] ? parseInt(this.scanProgressText.split('/')[0]) : 0,
+              duplicateGroups: this.dynamicGroups.length,
+              totalDuplicates: this.dynamicGroups.reduce((sum, g) => sum + g.files.length, 0),
+              totalWasteSize: this.dynamicGroups.reduce((sum, g) => sum + g.wasteSize, 0),
+              totalWasteSizeReadable: this.formatFileSize(this.dynamicGroups.reduce((sum, g) => sum + g.wasteSize, 0))
+            };
+          }
+        };
+
+        // 完成回调
+        const onComplete = (result: ScanResult) => {
+          this.scanResult = result;
+          this.lastScanTime = this.scanner!.getLastScanTimeFormatted();
           this.isScanning = false;
+          this.isRealTimeScanning = false;
+
+          // 更新显示列表为最终结果
+          if (this.scanResult) {
+            this.displayGroups = this.scanResult.duplicateGroups;
+          }
 
           if (this.scanResult.duplicateGroups.length === 0) {
             this.showToast('扫描完成，未发现重复文件', 'info');
@@ -106,10 +165,14 @@ export struct DeduplicationTab {
               'success'
             );
           }
-        }
-      }, 100);
+        };
+
+        // 执行异步扫描
+        this.scanner.fullScanAsync(callbacks, onComplete);
+      }
     } catch (error) {
       this.isScanning = false;
+      this.isRealTimeScanning = false;
       this.showToast(`扫描失败: ${error}`, 'error');
     }
   }
@@ -127,6 +190,11 @@ export struct DeduplicationTab {
           this.scanResult = this.scanner.incrementalScan();
           this.lastScanTime = this.scanner.getLastScanTimeFormatted();
           this.isScanning = false;
+
+          // 更新显示列表
+          if (this.scanResult) {
+            this.displayGroups = this.scanResult.duplicateGroups;
+          }
 
           if (this.scanResult.changedFiles === 0) {
             this.showToast('增量扫描完成，文件无变化', 'info');
@@ -151,6 +219,11 @@ export struct DeduplicationTab {
     const deletedCount = this.scanner.deduplicateAll();
     this.scanResult = this.scanner.fullScan();
 
+    // 更新显示列表
+    if (this.scanResult) {
+      this.displayGroups = this.scanResult.duplicateGroups;
+    }
+
     this.showToast(`一键去重完成！已删除 ${deletedCount} 个重复文件`, 'success');
     this.showConfirmDialog = false;
   }
@@ -161,6 +234,11 @@ export struct DeduplicationTab {
 
     const deletedCount = this.scanner.deduplicateGroup(this.selectedGroupHash, this.selectedKeepFile);
     this.scanResult = this.scanner.fullScan();
+
+    // 更新显示列表
+    if (this.scanResult) {
+      this.displayGroups = this.scanResult.duplicateGroups;
+    }
 
     this.showToast(`已删除 ${deletedCount} 个重复文件，保留 "${this.selectedKeepFile}"`, 'success');
     this.showConfirmDialog = false;
@@ -277,6 +355,45 @@ export struct DeduplicationTab {
       .width('100%')
       .padding({ left: 16, right: 16, bottom: 12 })
 
+      // === 扫描进度条 ===
+      if (this.isRealTimeScanning) {
+        Column() {
+          Row() {
+            Text('扫描进度')
+              .fontSize(14)
+              .fontWeight(FontWeight.Medium)
+              .fontColor('#333333')
+              .layoutWeight(1)
+
+            Text(`${this.scanProgress}%`)
+              .fontSize(14)
+              .fontColor('#007AFF')
+              .fontWeight(FontWeight.Bold)
+          }
+          .width('100%')
+          .margin({ bottom: 8 })
+
+          Progress({ value: this.scanProgress, total: 100, type: ProgressType.Linear })
+            .color('#007AFF')
+            .backgroundColor('#E0E0E0')
+            .height(8)
+            .width('100%')
+            .borderRadius(4)
+
+          if (this.scanProgressText) {
+            Text(`已扫描文件: ${this.scanProgressText}`)
+              .fontSize(12)
+              .fontColor('#8E8E93')
+              .margin({ top: 6 })
+          }
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 8, bottom: 12 })
+        .backgroundColor('#F8F8F8')
+        .borderRadius(12)
+        .margin({ left: 16, right: 16, bottom: 12 })
+      }
+
       // === 消息提示 ===
       if (this.showMessage) {
         Text(this.messageText)
@@ -292,21 +409,22 @@ export struct DeduplicationTab {
       }
 
       // === 扫描结果统计 ===
-      if (this.scanResult) {
+      if (this.scanResult || this.isRealTimeScanning) {
+        // 根据扫描状态获取要显示的统计数据
         Row() {
           Column() {
-            Text(`${this.scanResult.scannedFiles}`)
+            Text(`${this.isRealTimeScanning ? this.dynamicStats.scannedFiles : (this.scanResult?.scannedFiles || 0)}`)
               .fontSize(20)
               .fontWeight(FontWeight.Bold)
               .fontColor('#007AFF')
-            Text('扫描文件')
+            Text(this.isRealTimeScanning ? '已扫描' : '扫描文件')
               .fontSize(11)
               .fontColor('#8E8E93')
           }
           .layoutWeight(1)
 
           Column() {
-            Text(`${this.scanResult.duplicateGroups.length}`)
+            Text(`${this.isRealTimeScanning ? this.dynamicStats.duplicateGroups : (this.scanResult?.duplicateGroups.length || 0)}`)
               .fontSize(20)
               .fontWeight(FontWeight.Bold)
               .fontColor('#FF9500')
@@ -317,7 +435,7 @@ export struct DeduplicationTab {
           .layoutWeight(1)
 
           Column() {
-            Text(`${this.scanResult.totalDuplicates}`)
+            Text(`${this.isRealTimeScanning ? this.dynamicStats.totalDuplicates : (this.scanResult?.totalDuplicates || 0)}`)
               .fontSize(20)
               .fontWeight(FontWeight.Bold)
               .fontColor('#FF3B30')
@@ -328,7 +446,7 @@ export struct DeduplicationTab {
           .layoutWeight(1)
 
           Column() {
-            Text(this.scanResult.totalWasteSizeReadable)
+            Text(this.isRealTimeScanning ? this.dynamicStats.totalWasteSizeReadable : (this.scanResult?.totalWasteSizeReadable || '0 B'))
               .fontSize(20)
               .fontWeight(FontWeight.Bold)
               .fontColor('#34C759')
@@ -340,13 +458,13 @@ export struct DeduplicationTab {
         }
         .width('100%')
         .padding({ left: 16, right: 16, top: 8, bottom: 12 })
-        .backgroundColor('#F8F8F8')
+        .backgroundColor(this.isRealTimeScanning ? '#FFF8E1' : '#F8F8F8')
         .borderRadius(12)
         .margin({ left: 16, right: 16, bottom: 12 })
       }
 
       // === 重复文件列表 ===
-      if (!this.scanResult) {
+      if (!this.scanResult && !this.isRealTimeScanning) {
         Column() {
           Text('🔍')
             .fontSize(48)
@@ -358,7 +476,7 @@ export struct DeduplicationTab {
         .width('100%')
         .height(200)
         .justifyContent(FlexAlign.Center)
-      } else if (this.scanResult.duplicateGroups.length === 0) {
+      } else if (!this.isRealTimeScanning && this.scanResult && this.scanResult.duplicateGroups.length === 0) {
         Column() {
           Text('✅')
             .fontSize(48)
@@ -371,8 +489,20 @@ export struct DeduplicationTab {
         .height(200)
         .justifyContent(FlexAlign.Center)
       } else {
+        // 动态排行榜提示
+        if (this.isRealTimeScanning && this.dynamicGroups.length > 0) {
+          Row() {
+            Text(`🏆 动态排行榜 - 按可释放空间降序排列`)
+              .fontSize(13)
+              .fontWeight(FontWeight.Medium)
+              .fontColor('#FF9500')
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, bottom: 8 })
+        }
+
         // 增量扫描提示
-        if (this.scanResult.isIncremental && this.scanResult.changedFiles > 0) {
+        if (!this.isRealTimeScanning && this.scanResult && this.scanResult.isIncremental && this.scanResult.changedFiles > 0) {
           Row() {
             Text(`📊 本次仅扫描变更文件，共 ${this.scanResult.changedFiles} 个文件有变化`)
               .fontSize(12)
@@ -382,8 +512,22 @@ export struct DeduplicationTab {
           .padding({ left: 16, right: 16, bottom: 8 })
         }
 
-        List({ space: 8 }) {
-          ForEach(this.scanResult.duplicateGroups, (group: DuplicateGroup, index: number) => {
+        if (this.displayGroups.length === 0 && this.isRealTimeScanning) {
+          // 扫描中但还未发现重复组
+          Column() {
+            Text('🔄')
+              .fontSize(48)
+              .margin({ bottom: 16 })
+            Text('正在扫描文件，寻找重复组...')
+              .fontSize(14)
+              .fontColor('#8E8E93')
+          }
+          .width('100%')
+          .height(200)
+          .justifyContent(FlexAlign.Center)
+        } else if (this.displayGroups.length > 0) {
+          List({ space: 8 }) {
+            ForEach(this.displayGroups, (group: DuplicateGroup, index: number) => {
             ListItem() {
               Column() {
                 // 组标题行
@@ -523,12 +667,23 @@ export struct DeduplicationTab {
               .backgroundColor(Color.White)
               .borderRadius(12)
               .border({ width: 1, color: '#E0E0E0' })
+              .transition({
+                type: TransitionType.Insert,
+                opacity: 0,
+                translate: { x: 0, y: 50 }
+              })
+              .transition({
+                type: TransitionType.Delete,
+                opacity: 0,
+                translate: { x: 0, y: -50 }
+              })
             }
           })
         }
         .width('100%')
         .layoutWeight(1)
         .padding({ left: 16, right: 16 })
+        }
       }
 
       // === 确认对话框 ===

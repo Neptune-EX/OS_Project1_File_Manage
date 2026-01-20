@@ -6,6 +6,12 @@ import { fileIo } from '@kit.CoreFileKit';
 import { common } from '@kit.AbilityKit';
 import { TrashManager } from './TrashManager';
 
+// 扫描回调接口
+export interface ScanCallbacks {
+  onProgress?: (current: number, total: number) => void;  // 进度回调
+  onGroupFound?: (group: DuplicateGroup) => void;         // 发现重复组回调
+}
+
 // 重复文件组
 export interface DuplicateGroup {
   hash: string;              // 文件内容hash
@@ -188,16 +194,182 @@ export class DuplicateScanner {
   }
 
   /**
-   * 执行全量扫描
+   * 执行全量扫描（异步批量处理版本）
+   * @param callbacks 扫描回调（进度和实时重复组报告）
+   * @param onComplete 完成回调
    */
-  fullScan(): ScanResult {
+  fullScanAsync(callbacks?: ScanCallbacks, onComplete?: (result: ScanResult) => void): void {
     const startTime = Date.now();
     const files = this.getAllFiles();
     const hashMap: Map<string, DuplicateFileInfo[]> = new Map();
     const fingerprints: FileFingerprint[] = [];
+    const totalFiles = files.length;
+    const batchSize = 5; // 每批处理5个文件
+    let currentIndex = 0;
+    const reportedGroups: string[] = []; // 记录已报告的重复组hash
+
+    // 批量处理文件
+    const processBatch = () => {
+      const endIndex = Math.min(currentIndex + batchSize, files.length);
+
+      // 处理当前批次的文件
+      for (let i = currentIndex; i < endIndex; i++) {
+        const filename = files[i];
+        const filePath = `${this.filesDir}/${filename}`;
+
+        try {
+          const stat = fileIo.statSync(filePath);
+          const hash = this.calculateHash(filePath);
+
+          if (hash) {
+            const fileInfo: DuplicateFileInfo = {
+              filename: filename,
+              size: stat.size,
+              sizeReadable: this.formatFileSize(stat.size),
+              mtime: stat.mtime,
+              mtimeFormatted: this.formatDate(stat.mtime),
+              path: filePath
+            };
+
+            // 添加到hash映射
+            if (hashMap.has(hash)) {
+              hashMap.get(hash)!.push(fileInfo);
+            } else {
+              hashMap.set(hash, [fileInfo]);
+            }
+
+            // 记录指纹
+            fingerprints.push({
+              filename: filename,
+              size: stat.size,
+              mtime: stat.mtime,
+              hash: hash
+            });
+
+            // 检查是否形成新的重复组
+            const filesWithSameHash = hashMap.get(hash)!;
+            if (filesWithSameHash.length === 2 && reportedGroups.indexOf(hash) === -1) {
+              // 刚好形成重复组（第2个文件），立即报告
+              const totalSize = filesWithSameHash.reduce((sum, f) => sum + f.size, 0);
+              const wasteSize = totalSize - filesWithSameHash[0].size;
+
+              const group: DuplicateGroup = {
+                hash: hash,
+                files: filesWithSameHash.sort((a, b) => a.mtime - b.mtime),
+                totalSize: totalSize,
+                wasteSize: wasteSize
+              };
+
+              reportedGroups.push(hash);
+              if (callbacks && callbacks.onGroupFound) {
+                callbacks.onGroupFound(group);
+              }
+            } else if (filesWithSameHash.length > 2 && reportedGroups.indexOf(hash) >= 0) {
+              // 重复组增加了新文件，更新报告
+              const totalSize = filesWithSameHash.reduce((sum, f) => sum + f.size, 0);
+              const wasteSize = totalSize - filesWithSameHash[0].size;
+
+              const group: DuplicateGroup = {
+                hash: hash,
+                files: filesWithSameHash.sort((a, b) => a.mtime - b.mtime),
+                totalSize: totalSize,
+                wasteSize: wasteSize
+              };
+
+              if (callbacks && callbacks.onGroupFound) {
+                callbacks.onGroupFound(group);
+              }
+            }
+          }
+        } catch (error) {
+          console.warn(`处理文件失败: ${filename}, ${error}`);
+        }
+      }
+
+      // 报告进度
+      currentIndex = endIndex;
+      if (callbacks && callbacks.onProgress) {
+        callbacks.onProgress(currentIndex, totalFiles);
+      }
+
+      // 继续处理下一批或完成
+      if (currentIndex < files.length) {
+        setTimeout(processBatch, 50); // 50ms后处理下一批，给UI更新时间
+      } else {
+        // 所有文件处理完成，构建最终结果
+        const duplicateGroups: DuplicateGroup[] = [];
+        let totalDuplicates = 0;
+        let totalWasteSize = 0;
+
+        hashMap.forEach((files, hash) => {
+          if (files.length > 1) {
+            const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+            const wasteSize = totalSize - files[0].size;
+
+            duplicateGroups.push({
+              hash: hash,
+              files: files.sort((a, b) => a.mtime - b.mtime),
+              totalSize: totalSize,
+              wasteSize: wasteSize
+            });
+
+            totalDuplicates += files.length;
+            totalWasteSize += wasteSize;
+          }
+        });
+
+        // 按浪费空间排序
+        duplicateGroups.sort((a, b) => b.wasteSize - a.wasteSize);
+
+        const scanTime = Date.now() - startTime;
+
+        // 保存扫描状态
+        this.saveScanState({
+          lastScanTime: Date.now(),
+          fingerprints: fingerprints,
+          duplicateGroups: duplicateGroups
+        });
+
+        const result: ScanResult = {
+          duplicateGroups: duplicateGroups,
+          totalDuplicates: totalDuplicates,
+          totalWasteSize: totalWasteSize,
+          totalWasteSizeReadable: this.formatFileSize(totalWasteSize),
+          scannedFiles: files.length,
+          scanTime: scanTime,
+          isIncremental: false,
+          changedFiles: 0
+        };
+
+        if (onComplete) {
+          onComplete(result);
+        }
+      }
+    };
+
+    // 开始处理第一批
+    processBatch();
+  }
+
+  /**
+   * 执行全量扫描（同步版本，保留用于去重操作）
+   * @param callbacks 扫描回调（进度和实时重复组报告）
+   */
+  fullScan(callbacks?: ScanCallbacks): ScanResult {
+    const startTime = Date.now();
+    const files = this.getAllFiles();
+    const hashMap: Map<string, DuplicateFileInfo[]> = new Map();
+    const fingerprints: FileFingerprint[] = [];
+    const totalFiles = files.length;
 
     // 计算每个文件的hash并分组
-    for (const filename of files) {
+    for (let i = 0; i < files.length; i++) {
+      const filename = files[i];
+
+      // 报告进度
+      if (callbacks && callbacks.onProgress) {
+        callbacks.onProgress(i + 1, totalFiles);
+      }
       const filePath = `${this.filesDir}/${filename}`;
       try {
         const stat = fileIo.statSync(filePath);
@@ -243,12 +415,19 @@ export class DuplicateScanner {
         const totalSize = files.reduce((sum, f) => sum + f.size, 0);
         const wasteSize = totalSize - files[0].size; // 浪费空间 = 总大小 - 保留一份的大小
 
-        duplicateGroups.push({
+        const group: DuplicateGroup = {
           hash: hash,
           files: files.sort((a, b) => a.mtime - b.mtime), // 按创建时间排序，最早的在前
           totalSize: totalSize,
           wasteSize: wasteSize
-        });
+        };
+
+        duplicateGroups.push(group);
+
+        // 实时报告新发现的重复组
+        if (callbacks && callbacks.onGroupFound) {
+          callbacks.onGroupFound(group);
+        }
 
         totalDuplicates += files.length;
         totalWasteSize += wasteSize;
