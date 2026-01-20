@@ -625,6 +625,356 @@ interface GeneratorConfig {
 
 ---
 
+## 7. 文件去重过程可视化（实验三）
+
+### 实现原理
+
+通过**异步批量扫描**和**回调机制**实现扫描过程的实时可视化，包括进度条更新和动态重复组排行榜。
+
+### 7.1 异步批量扫描
+
+**文件路径**: `entry/src/main/ets/common/utils/DuplicateScanner.ets`
+
+```typescript
+fullScanAsync(callbacks?: ScanCallbacks, onComplete?: (result: ScanResult) => void): void {
+  const files = this.getAllFiles();
+  const hashMap: Map<string, DuplicateFileInfo[]> = new Map();
+  const batchSize = 5;  // 每批处理5个文件
+  let currentIndex = 0;
+  const reportedGroups: string[] = [];  // 记录已报告的重复组
+
+  // 批量处理函数
+  const processBatch = () => {
+    const endIndex = Math.min(currentIndex + batchSize, files.length);
+
+    // 处理当前批次的文件
+    for (let i = currentIndex; i < endIndex; i++) {
+      const filename = files[i];
+      const hash = this.calculateHash(filePath);
+
+      // 添加到hash映射
+      if (hashMap.has(hash)) {
+        hashMap.get(hash)!.push(fileInfo);
+      } else {
+        hashMap.set(hash, [fileInfo]);
+      }
+
+      // 检查是否形成新的重复组
+      const filesWithSameHash = hashMap.get(hash)!;
+      if (filesWithSameHash.length === 2 && reportedGroups.indexOf(hash) === -1) {
+        // 刚好形成重复组（第2个文件），立即报告
+        const group: DuplicateGroup = {
+          hash: hash,
+          files: filesWithSameHash.sort((a, b) => a.mtime - b.mtime),
+          totalSize: totalSize,
+          wasteSize: wasteSize
+        };
+
+        reportedGroups.push(hash);
+        if (callbacks && callbacks.onGroupFound) {
+          callbacks.onGroupFound(group);  // 实时通知UI
+        }
+      } else if (filesWithSameHash.length > 2 && reportedGroups.indexOf(hash) >= 0) {
+        // 重复组增加了新文件，更新报告
+        if (callbacks && callbacks.onGroupFound) {
+          callbacks.onGroupFound(group);
+        }
+      }
+    }
+
+    // 报告进度
+    currentIndex = endIndex;
+    if (callbacks && callbacks.onProgress) {
+      callbacks.onProgress(currentIndex, totalFiles);
+    }
+
+    // 继续处理下一批或完成
+    if (currentIndex < files.length) {
+      setTimeout(processBatch, 50);  // 50ms后处理下一批，让UI有时间刷新
+    } else {
+      // 所有文件处理完成，调用完成回调
+      if (onComplete) {
+        onComplete(result);
+      }
+    }
+  };
+
+  // 启动批量处理
+  processBatch();
+}
+```
+
+### 7.2 回调接口
+
+```typescript
+// 扫描回调接口
+export interface ScanCallbacks {
+  onProgress?: (current: number, total: number) => void;  // 进度回调
+  onGroupFound?: (group: DuplicateGroup) => void;         // 发现重复组回调
+}
+```
+
+### 7.3 UI实时更新
+
+**文件路径**: `entry/src/main/ets/view/DeduplicationTab.ets`
+
+```typescript
+private async performFullScan() {
+  this.isScanning = true;
+  this.isRealTimeScanning = true;
+  this.scanProgress = 0;
+  this.dynamicGroups = [];
+  this.displayGroups = [];
+
+  // 创建回调对象
+  const callbacks: ScanCallbacks = {
+    // 进度回调 - 更新进度条
+    onProgress: (current: number, total: number) => {
+      this.scanProgress = Math.floor((current / total) * 100);
+      this.scanProgressText = `${current}/${total}`;
+    },
+
+    // 发现重复组回调 - 插入排行榜
+    onGroupFound: (group: DuplicateGroup) => {
+      // 插入新组并按 wasteSize 降序排序
+      this.dynamicGroups = [...this.dynamicGroups, group]
+        .sort((a, b) => b.wasteSize - a.wasteSize);
+
+      // 更新显示列表
+      this.displayGroups = this.dynamicGroups;
+
+      // 更新动态统计
+      this.dynamicStats = {
+        scannedFiles: parseInt(this.scanProgressText.split('/')[0]),
+        duplicateGroups: this.dynamicGroups.length,
+        totalDuplicates: this.dynamicGroups.reduce((sum, g) => sum + g.files.length, 0),
+        totalWasteSize: this.dynamicGroups.reduce((sum, g) => sum + g.wasteSize, 0),
+        totalWasteSizeReadable: this.formatFileSize(...)
+      };
+    }
+  };
+
+  // 完成回调
+  const onComplete = (result: ScanResult) => {
+    this.scanResult = result;
+    this.isScanning = false;
+    this.isRealTimeScanning = false;
+    this.displayGroups = result.duplicateGroups;
+  };
+
+  // 执行异步扫描
+  this.scanner.fullScanAsync(callbacks, onComplete);
+}
+```
+
+### 7.4 可视化组件
+
+#### 进度条组件
+
+```typescript
+// 扫描进度条
+if (this.isRealTimeScanning) {
+  Column() {
+    Row() {
+      Text('扫描进度')
+      Text(`${this.scanProgress}%`)  // 实时更新百分比
+    }
+
+    Progress({ value: this.scanProgress, total: 100, type: ProgressType.Linear })
+      .color('#007AFF')
+      .height(8)
+
+    Text(`已扫描文件: ${this.scanProgressText}`)  // 显示 "5/200"
+  }
+  .backgroundColor('#F8F8F8')
+}
+```
+
+#### 动态统计卡片
+
+```typescript
+// 实时统计信息
+Row() {
+  Column() {
+    Text(`${this.isRealTimeScanning ? this.dynamicStats.scannedFiles : this.scanResult.scannedFiles}`)
+    Text(this.isRealTimeScanning ? '已扫描' : '扫描文件')
+  }
+
+  Column() {
+    Text(`${this.isRealTimeScanning ? this.dynamicStats.duplicateGroups : this.scanResult.duplicateGroups.length}`)
+    Text('重复组')
+  }
+
+  Column() {
+    Text(`${this.isRealTimeScanning ? this.dynamicStats.totalDuplicates : this.scanResult.totalDuplicates}`)
+    Text('重复文件')
+  }
+
+  Column() {
+    Text(this.isRealTimeScanning ? this.dynamicStats.totalWasteSizeReadable : this.scanResult.totalWasteSizeReadable)
+    Text('可节省')
+  }
+}
+.backgroundColor(this.isRealTimeScanning ? '#FFF8E1' : '#F8F8F8')  // 扫描中黄色，完成后灰色
+```
+
+#### 动态排行榜
+
+```typescript
+// 动态排行榜提示
+if (this.isRealTimeScanning && this.dynamicGroups.length > 0) {
+  Text(`🏆 动态排行榜 - 按可释放空间降序排列`)
+}
+
+// 重复组列表（实时更新）
+List({ space: 8 }) {
+  ForEach(this.displayGroups, (group: DuplicateGroup, index: number) => {
+    ListItem() {
+      Column() {
+        Text(`重复组 ${index + 1}`)
+        Text(`${group.files.length} 个重复文件 · 可节省 ${formatFileSize(group.wasteSize)}`)
+      }
+    }
+    .transition({
+      type: TransitionType.Insert,
+      opacity: 0,
+      translate: { x: 0, y: 50 }  // 从下方50px淡入
+    })
+  })
+}
+```
+
+### 7.5 执行流程
+
+```
+用户点击"全量扫描"
+    ↓
+初始化状态（进度0%，清空列表）
+    ↓
+启动异步批量扫描
+    ↓
+┌─────────────────────────────────────┐
+│ 批次1: 处理文件0-4                    │
+│   - 计算hash                         │
+│   - 发现重复组A → 立即回调onGroupFound │
+│   - 回调onProgress(5, 200)           │
+│   - UI更新: 进度5%, 插入重复组A       │
+├─────────────────────────────────────┤
+│ 延迟50ms（让UI线程刷新）              │
+├─────────────────────────────────────┤
+│ 批次2: 处理文件5-9                    │
+│   - 发现重复组B → 立即回调            │
+│   - 回调onProgress(10, 200)          │
+│   - UI更新: 进度10%, 插入重复组B并重排│
+├─────────────────────────────────────┤
+│ 延迟50ms                             │
+├─────────────────────────────────────┤
+│ ...                                  │
+├─────────────────────────────────────┤
+│ 批次40: 处理文件195-199               │
+│   - 回调onProgress(200, 200)         │
+│   - UI更新: 进度100%                 │
+└─────────────────────────────────────┘
+    ↓
+调用onComplete回调
+    ↓
+显示最终结果，隐藏进度条
+```
+
+### 7.6 关键技术点
+
+#### 1. 批量处理策略
+
+- **批次大小**: 每批处理5个文件
+- **延迟时间**: 批次间延迟50ms
+- **目的**: 将长时间的同步任务分割成小块，在间隙让UI线程有机会响应和渲染
+
+#### 2. 实时排序插入
+
+```typescript
+// 每发现一个重复组，立即插入并排序
+this.dynamicGroups = [...this.dynamicGroups, group]
+  .sort((a, b) => b.wasteSize - a.wasteSize);  // 按可释放空间降序
+```
+
+- 使用扩展运算符创建新数组（触发ArkTS响应式更新）
+- 每次插入后立即排序，保证排行榜始终有序
+- 浪费空间大的组排在前面
+
+#### 3. 状态管理
+
+```typescript
+@State isRealTimeScanning: boolean = false;  // 是否正在实时扫描
+@State dynamicGroups: DuplicateGroup[] = [];  // 动态更新的重复组列表
+@State displayGroups: DuplicateGroup[] = [];  // 当前显示的列表
+@State dynamicStats: DynamicStats = { ... };  // 动态统计数据
+```
+
+- `isRealTimeScanning`: 区分扫描中和扫描完成状态
+- `dynamicGroups`: 扫描过程中累积的重复组
+- `displayGroups`: 统一的显示列表（扫描中显示dynamicGroups，完成后显示最终结果）
+- `dynamicStats`: 实时计算的统计数据
+
+#### 4. 列表动画
+
+```typescript
+.transition({
+  type: TransitionType.Insert,
+  opacity: 0,
+  translate: { x: 0, y: 50 }  // 插入时从下方50px淡入
+})
+.transition({
+  type: TransitionType.Delete,
+  opacity: 0,
+  translate: { x: 0, y: -50 }  // 删除时向上50px淡出
+})
+```
+
+### 7.7 多线程说明
+
+**本系统未采用多线程，而是使用单线程异步批处理模拟并发效果。**
+
+#### 为什么不使用多线程？
+
+1. **HarmonyOS ArkTS限制**: ArkTS运行在单线程环境（主UI线程），不支持传统的多线程编程
+2. **UI更新要求**: UI组件必须在主线程更新，多线程反而增加复杂度
+3. **文件I/O特性**: 文件读取是I/O密集型操作，多线程收益有限
+
+#### 异步批处理原理
+
+```
+主线程时间轴:
+|--批次1(5个文件)--|--UI渲染--|--批次2(5个文件)--|--UI渲染--|--批次3--|...
+
+传统同步扫描:
+|--扫描所有200个文件(阻塞UI)--|--UI渲染结果--|
+```
+
+**核心机制**:
+- 使用 `setTimeout(processBatch, 50)` 实现"协作式多任务"
+- 每批处理完后主动让出控制权（通过setTimeout）
+- JavaScript事件循环机制确保UI渲染任务能在批次间隙执行
+- 用户感知上类似多线程，但实际是时间片轮转
+
+#### 优势
+
+1. **简单可靠**: 无需处理线程同步、锁、竞态条件
+2. **UI响应**: 保证UI始终可响应，不会卡顿
+3. **实时反馈**: 可以在扫描过程中实时更新UI
+4. **跨平台**: 纯JavaScript/TypeScript实现，无平台依赖
+
+#### 性能对比
+
+| 方案 | 总耗时 | UI响应 | 实时反馈 | 实现复杂度 |
+|------|--------|--------|----------|-----------|
+| 同步扫描 | 快 | 阻塞 | 无 | 低 |
+| 异步批处理 | 稍慢(+10%) | 流畅 | 有 | 中 |
+| 多线程(Worker) | 快 | 流畅 | 需消息传递 | 高 |
+
+**结论**: 对于文件去重这种I/O密集型任务，异步批处理是最佳方案，在保证用户体验的同时避免了多线程的复杂性。
+
+---
+
 ## 文件结构总览
 
 ```
