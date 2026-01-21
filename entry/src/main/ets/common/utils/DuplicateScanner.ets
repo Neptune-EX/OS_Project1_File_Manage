@@ -1,9 +1,14 @@
 /*
  * 文件去重扫描工具类 - 实现重复文件检测和分组
+ *
+ * 支持两种扫描模式：
+ * 1. 主线程异步批处理扫描（fullScanAsync）- 适用于文件较少的场景
+ * 2. Worker多线程扫描（fullScanWithWorker）- 适用于大量文件，不阻塞UI
  */
 
 import { fileIo } from '@kit.CoreFileKit';
 import { common } from '@kit.AbilityKit';
+import { worker, MessageEvents, ErrorEvent } from '@kit.ArkTS';
 import { TrashManager } from './TrashManager';
 
 // 扫描回调接口
@@ -65,6 +70,11 @@ export class DuplicateScanner {
   private filesDir: string;
   private stateFilePath: string;
   private static instance: DuplicateScanner | null = null;
+
+  // Worker 多线程扫描相关
+  private scanWorker: worker.ThreadWorker | null = null;
+  private workerCallbacks: ScanCallbacks | null = null;
+  private workerOnComplete: ((result: ScanResult) => void) | null = null;
 
   constructor(context: Context) {
     this.context = context;
@@ -664,4 +674,179 @@ export class DuplicateScanner {
       console.error(`清除扫描状态失败: ${error}`);
     }
   }
+
+  // ==================== Worker 多线程扫描方法 ====================
+
+  /**
+   * 使用 Worker 多线程执行全量扫描
+   *
+   * 工作原理：
+   * 1. 创建一个独立的 Worker 线程
+   * 2. 将文件扫描和哈希计算任务交给 Worker 执行
+   * 3. Worker 通过 postMessage 向主线程发送进度和结果
+   * 4. 主线程通过回调函数更新 UI
+   *
+   * 优势：
+   * - 不阻塞主线程（UI线程），界面保持流畅响应
+   * - 充分利用多核 CPU 的并行能力
+   * - 适合处理大量文件的场景
+   *
+   * @param callbacks 扫描回调（进度和实时重复组报告）
+   * @param onComplete 完成回调
+   */
+  fullScanWithWorker(callbacks?: ScanCallbacks, onComplete?: (result: ScanResult) => void): void {
+    console.info('DuplicateScanner: 启动 Worker 多线程扫描');
+
+    // 保存回调函数
+    this.workerCallbacks = callbacks ? callbacks : null;
+    this.workerOnComplete = onComplete ? onComplete : null;
+
+    // 如果已有 Worker 实例，先终止它
+    if (this.scanWorker) {
+      this.terminateWorker();
+    }
+
+    try {
+      // 创建 Worker 实例
+      // 参数说明：
+      // - 第一个参数是 Worker 脚本路径，相对于 entry 模块
+      // - type: 'classic' 表示使用标准 Worker 模式
+      // - name: Worker 名称，用于调试
+      this.scanWorker = new worker.ThreadWorker('entry/ets/workers/DuplicateWorker.ets', {
+        type: 'classic',
+        name: 'DuplicateScanWorker'
+      });
+
+      // 设置消息处理器
+      this.setupWorkerHandlers();
+
+      // 发送扫描命令给 Worker
+      this.scanWorker.postMessage({
+        type: 'SCAN',
+        filesDir: this.filesDir
+      });
+
+      console.info('DuplicateScanner: 已发送扫描命令给 Worker');
+    } catch (error) {
+      console.error(`DuplicateScanner: 创建 Worker 失败: ${error}`);
+      // 如果 Worker 创建失败，回退到主线程异步扫描
+      console.info('DuplicateScanner: 回退到主线程异步扫描');
+      this.fullScanAsync(callbacks, onComplete);
+    }
+  }
+
+  /**
+   * 设置 Worker 消息处理器
+   *
+   * 处理 Worker 发来的各种消息类型：
+   * - PROGRESS: 扫描进度更新
+   * - GROUP_FOUND: 发现新的重复组
+   * - COMPLETE: 扫描完成
+   * - ERROR: 扫描出错
+   */
+  private setupWorkerHandlers(): void {
+    if (!this.scanWorker) return;
+
+    // 处理 Worker 发来的消息
+    this.scanWorker.onmessage = (e: MessageEvents): void => {
+      const message = e.data as WorkerResponseMessage;
+      console.info(`DuplicateScanner: 收到 Worker 消息 type=${message.type}`);
+
+      switch (message.type) {
+        case 'PROGRESS':
+          // 进度更新
+          if (this.workerCallbacks && this.workerCallbacks.onProgress) {
+            this.workerCallbacks.onProgress(message.current!, message.total!);
+          }
+          break;
+
+        case 'GROUP_FOUND':
+          // 发现重复组
+          if (this.workerCallbacks && this.workerCallbacks.onGroupFound && message.group) {
+            this.workerCallbacks.onGroupFound(message.group);
+          }
+          break;
+
+        case 'COMPLETE':
+          // 扫描完成
+          if (message.result) {
+            // 保存扫描状态
+            if (message.fingerprints) {
+              this.saveScanState({
+                lastScanTime: Date.now(),
+                fingerprints: message.fingerprints,
+                duplicateGroups: message.result.duplicateGroups
+              });
+            }
+
+            // 调用完成回调
+            if (this.workerOnComplete) {
+              this.workerOnComplete(message.result);
+            }
+          }
+
+          // 清理 Worker
+          this.terminateWorker();
+          break;
+
+        case 'ERROR':
+          console.error(`DuplicateScanner: Worker 扫描出错: ${message.error}`);
+          // 回退到主线程异步扫描
+          this.terminateWorker();
+          this.fullScanAsync(this.workerCallbacks ? this.workerCallbacks : undefined,
+            this.workerOnComplete ? this.workerOnComplete : undefined);
+          break;
+      }
+    };
+
+    // 处理 Worker 错误
+    this.scanWorker.onerror = (error: ErrorEvent): void => {
+      console.error(`DuplicateScanner: Worker 发生错误: ${error.message}`);
+      this.terminateWorker();
+      // 回退到主线程异步扫描
+      this.fullScanAsync(this.workerCallbacks ? this.workerCallbacks : undefined,
+        this.workerOnComplete ? this.workerOnComplete : undefined);
+    };
+
+    // 处理 Worker 退出
+    this.scanWorker.onexit = (code: number): void => {
+      console.info(`DuplicateScanner: Worker 已退出，退出码: ${code}`);
+      this.scanWorker = null;
+    };
+  }
+
+  /**
+   * 终止 Worker 线程
+   */
+  terminateWorker(): void {
+    if (this.scanWorker) {
+      try {
+        this.scanWorker.terminate();
+        console.info('DuplicateScanner: Worker 已终止');
+      } catch (error) {
+        console.warn(`DuplicateScanner: 终止 Worker 失败: ${error}`);
+      }
+      this.scanWorker = null;
+    }
+    this.workerCallbacks = null;
+    this.workerOnComplete = null;
+  }
+
+  /**
+   * 检查 Worker 是否正在运行
+   */
+  isWorkerRunning(): boolean {
+    return this.scanWorker !== null;
+  }
+}
+
+// Worker 响应消息类型定义
+interface WorkerResponseMessage {
+  type: string;
+  current?: number;
+  total?: number;
+  group?: DuplicateGroup;
+  result?: ScanResult;
+  fingerprints?: FileFingerprint[];
+  error?: string;
 }

@@ -1,5 +1,9 @@
 /*
  * 文件去重Tab页面 - 实现重复文件扫描、展示和去重功能
+ *
+ * 支持两种扫描模式：
+ * 1. Worker多线程扫描（默认）- 在独立线程中执行，不阻塞UI
+ * 2. 主线程异步扫描 - 在主线程中分批执行
  */
 
 import { DuplicateScanner, DuplicateGroup, DuplicateFileInfo, ScanResult, ScanCallbacks } from '../common/utils/DuplicateScanner';
@@ -42,6 +46,10 @@ export struct DeduplicationTab {
     totalWasteSizeReadable: '0 B'
   };
   @State displayGroups: DuplicateGroup[] = [];  // 当前显示的重复组列表
+
+  // Worker多线程扫描开关
+  @State useWorkerScan: boolean = true;  // 默认使用Worker多线程扫描
+  @State scanModeText: string = 'Worker多线程';  // 当前扫描模式文本
 
   // 查看文件内容相关状态
   @State showFileContentDialog: boolean = false;
@@ -115,7 +123,10 @@ export struct DeduplicationTab {
     this.scanProgressText = '';
     this.dynamicGroups = [];
     this.displayGroups = [];  // 清空显示列表
-    this.showToast('正在扫描文件...', 'info');
+
+    // 根据扫描模式显示不同提示
+    const modeHint = this.useWorkerScan ? '（Worker多线程模式）' : '（主线程异步模式）';
+    this.showToast(`正在扫描文件...${modeHint}`, 'info');
 
     try {
       if (this.scanner) {
@@ -126,9 +137,17 @@ export struct DeduplicationTab {
             this.scanProgressText = `${current}/${total}`;
           },
           onGroupFound: (group: DuplicateGroup) => {
-            // 插入新组并按 wasteSize 降序排序
-            this.dynamicGroups = [...this.dynamicGroups, group]
-              .sort((a, b) => b.wasteSize - a.wasteSize);
+            // 检查是否已存在该组（更新）
+            const existingIndex = this.dynamicGroups.findIndex((g: DuplicateGroup) => g.hash === group.hash);
+            if (existingIndex >= 0) {
+              // 更新已存在的组
+              this.dynamicGroups[existingIndex] = group;
+              this.dynamicGroups = this.dynamicGroups.slice().sort((a, b) => b.wasteSize - a.wasteSize);
+            } else {
+              // 插入新组并按 wasteSize 降序排序
+              this.dynamicGroups = [...this.dynamicGroups, group]
+                .sort((a, b) => b.wasteSize - a.wasteSize);
+            }
 
             // 更新显示列表
             this.displayGroups = this.dynamicGroups;
@@ -159,16 +178,23 @@ export struct DeduplicationTab {
           if (this.scanResult.duplicateGroups.length === 0) {
             this.showToast('扫描完成，未发现重复文件', 'info');
           } else {
+            const modeInfo = this.useWorkerScan ? '[Worker]' : '[主线程]';
             this.showToast(
-              `扫描完成！发现 ${this.scanResult.duplicateGroups.length} 组重复文件，` +
+              `${modeInfo} 扫描完成！发现 ${this.scanResult.duplicateGroups.length} 组重复文件，` +
               `可节省 ${this.scanResult.totalWasteSizeReadable} 空间`,
               'success'
             );
           }
         };
 
-        // 执行异步扫描
-        this.scanner.fullScanAsync(callbacks, onComplete);
+        // 根据开关选择扫描方式
+        if (this.useWorkerScan) {
+          // 使用 Worker 多线程扫描
+          this.scanner.fullScanWithWorker(callbacks, onComplete);
+        } else {
+          // 使用主线程异步扫描
+          this.scanner.fullScanAsync(callbacks, onComplete);
+        }
       }
     } catch (error) {
       this.isScanning = false;
@@ -304,6 +330,25 @@ export struct DeduplicationTab {
           Text(`上次扫描: ${this.lastScanTime}`)
             .fontSize(12)
             .fontColor('#8E8E93')
+
+          Blank()
+
+          // 扫描模式切换
+          Row() {
+            Text(this.useWorkerScan ? 'Worker多线程' : '主线程异步')
+              .fontSize(11)
+              .fontColor(this.useWorkerScan ? '#007AFF' : '#8E8E93')
+              .margin({ right: 6 })
+
+            Toggle({ type: ToggleType.Switch, isOn: this.useWorkerScan })
+              .width(40)
+              .height(22)
+              .selectedColor('#007AFF')
+              .onChange((isOn: boolean) => {
+                this.useWorkerScan = isOn;
+                this.scanModeText = isOn ? 'Worker多线程' : '主线程异步';
+              })
+          }
         }
       }
       .width('100%')

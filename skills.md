@@ -930,48 +930,325 @@ this.dynamicGroups = [...this.dynamicGroups, group]
 })
 ```
 
-### 7.7 多线程说明
+### 7.7 多线程实现（Worker）
 
-**本系统未采用多线程，而是使用单线程异步批处理模拟并发效果。**
+**本系统已实现真正的多线程扫描，采用 HarmonyOS Worker 机制。**
 
-#### 为什么不使用多线程？
+#### 什么是多线程？
 
-1. **HarmonyOS ArkTS限制**: ArkTS运行在单线程环境（主UI线程），不支持传统的多线程编程
-2. **UI更新要求**: UI组件必须在主线程更新，多线程反而增加复杂度
-3. **文件I/O特性**: 文件读取是I/O密集型操作，多线程收益有限
+想象一下你在餐厅工作：
 
-#### 异步批处理原理
+- **单线程（原来的方式）**：只有一个服务员，他必须先给A桌点单、送菜，然后才能服务B桌。如果A桌点菜时间很长，B桌就只能等着。
+- **多线程（现在的方式）**：有两个服务员！一个专门在厨房准备菜（Worker线程），另一个专门接待客人（UI主线程）。厨房忙着做菜时，接待员还能继续服务其他客人。
+
+在我们的应用中：
+- **主线程（UI线程）**：负责显示界面、响应用户点击、更新进度条等
+- **Worker线程**：负责读取文件、计算哈希值等耗时操作
+
+#### 为什么需要多线程？
+
+当扫描大量文件时，每个文件都需要：
+1. 打开文件
+2. 读取内容
+3. 计算哈希值
+4. 关闭文件
+
+这些操作非常耗时。如果在主线程执行，界面会"卡住"，用户无法操作。使用多线程后：
 
 ```
-主线程时间轴:
-|--批次1(5个文件)--|--UI渲染--|--批次2(5个文件)--|--UI渲染--|--批次3--|...
+┌────────────────────────────────────────────────────────────┐
+│                        之前（单线程）                        │
+├────────────────────────────────────────────────────────────┤
+│ 主线程: [扫描文件1][扫描文件2][扫描文件3]...[更新UI]          │
+│         ↑_________界面卡住，无法响应_________↑               │
+└────────────────────────────────────────────────────────────┘
 
-传统同步扫描:
-|--扫描所有200个文件(阻塞UI)--|--UI渲染结果--|
+┌────────────────────────────────────────────────────────────┐
+│                        现在（多线程）                        │
+├────────────────────────────────────────────────────────────┤
+│ 主线程:   [响应点击][更新进度][显示结果][响应点击]...         │
+│                ↑        ↑        ↑                         │
+│ Worker线程: [扫描文件1][扫描文件2][扫描文件3]...              │
+│              └──发送进度──┴──发送结果──┘                    │
+└────────────────────────────────────────────────────────────┘
 ```
 
-**核心机制**:
-- 使用 `setTimeout(processBatch, 50)` 实现"协作式多任务"
-- 每批处理完后主动让出控制权（通过setTimeout）
-- JavaScript事件循环机制确保UI渲染任务能在批次间隙执行
-- 用户感知上类似多线程，但实际是时间片轮转
+#### HarmonyOS Worker 机制
 
-#### 优势
+##### 1. Worker 是什么？
 
-1. **简单可靠**: 无需处理线程同步、锁、竞态条件
-2. **UI响应**: 保证UI始终可响应，不会卡顿
-3. **实时反馈**: 可以在扫描过程中实时更新UI
-4. **跨平台**: 纯JavaScript/TypeScript实现，无平台依赖
+Worker 是 HarmonyOS 提供的多线程解决方案。它可以：
+- 创建独立的线程执行任务
+- 与主线程通过消息传递通信
+- 不阻塞主线程的运行
+
+##### 2. 通信方式：消息传递
+
+主线程和 Worker 线程不能直接共享变量，必须通过"发消息"来通信：
+
+```typescript
+// 主线程发送消息给 Worker
+worker.postMessage({
+  type: 'SCAN',
+  filesDir: '/data/storage/...'
+});
+
+// Worker 发送消息给主线程
+workerPort.postMessage({
+  type: 'PROGRESS',
+  current: 50,
+  total: 100
+});
+```
+
+就像两个人通过打电话交流，而不是面对面说话。
+
+##### 3. 消息协议设计
+
+我们定义了清晰的消息类型：
+
+| 方向 | 消息类型 | 含义 | 携带数据 |
+|------|----------|------|----------|
+| 主线程→Worker | `SCAN` | 开始扫描 | filesDir |
+| Worker→主线程 | `PROGRESS` | 进度更新 | current, total |
+| Worker→主线程 | `GROUP_FOUND` | 发现重复组 | group |
+| Worker→主线程 | `COMPLETE` | 扫描完成 | result, fingerprints |
+| Worker→主线程 | `ERROR` | 发生错误 | error |
+
+#### Worker 实现详解
+
+##### 文件位置
+
+```
+entry/src/main/ets/
+├── workers/
+│   └── DuplicateWorker.ets    ← Worker 线程代码
+└── common/utils/
+    └── DuplicateScanner.ets   ← 主线程调用代码
+```
+
+##### Worker 线程代码 (DuplicateWorker.ets)
+
+```typescript
+import { worker, MessageEvents } from '@kit.ArkTS';
+import { fileIo } from '@kit.CoreFileKit';
+
+// 获取 Worker 通信端口
+const workerPort: worker.ThreadWorkerGlobalScope = worker.workerPort;
+
+// 监听主线程消息
+workerPort.onmessage = (e: MessageEvents): void => {
+  const message = e.data;
+
+  if (message.type === 'SCAN') {
+    // 执行扫描任务
+    performFullScan(message.filesDir);
+  }
+};
+
+// 扫描函数
+function performFullScan(filesDir: string): void {
+  const files = getAllFiles(filesDir);
+
+  for (let i = 0; i < files.length; i++) {
+    // 计算文件哈希
+    const hash = calculateHash(files[i]);
+
+    // 每处理5个文件，发送进度
+    if ((i + 1) % 5 === 0) {
+      workerPort.postMessage({
+        type: 'PROGRESS',
+        current: i + 1,
+        total: files.length
+      });
+    }
+
+    // 发现重复组时立即通知
+    if (/* 形成重复组 */) {
+      workerPort.postMessage({
+        type: 'GROUP_FOUND',
+        group: duplicateGroup
+      });
+    }
+  }
+
+  // 扫描完成
+  workerPort.postMessage({
+    type: 'COMPLETE',
+    result: scanResult
+  });
+}
+```
+
+##### 主线程调用代码 (DuplicateScanner.ets)
+
+```typescript
+import { worker, MessageEvents, ErrorEvent } from '@kit.ArkTS';
+
+class DuplicateScanner {
+  private scanWorker: worker.ThreadWorker | null = null;
+
+  // 使用 Worker 扫描
+  fullScanWithWorker(callbacks, onComplete): void {
+    // 1. 创建 Worker 实例
+    this.scanWorker = new worker.ThreadWorker(
+      'entry/ets/workers/DuplicateWorker.ets',
+      { type: 'classic', name: 'DuplicateScanWorker' }
+    );
+
+    // 2. 设置消息处理器
+    this.scanWorker.onmessage = (e: MessageEvents): void => {
+      const message = e.data;
+
+      switch (message.type) {
+        case 'PROGRESS':
+          // 更新进度条
+          callbacks.onProgress(message.current, message.total);
+          break;
+
+        case 'GROUP_FOUND':
+          // 更新重复组列表
+          callbacks.onGroupFound(message.group);
+          break;
+
+        case 'COMPLETE':
+          // 扫描完成
+          onComplete(message.result);
+          this.terminateWorker();
+          break;
+      }
+    };
+
+    // 3. 发送扫描命令
+    this.scanWorker.postMessage({
+      type: 'SCAN',
+      filesDir: this.filesDir
+    });
+  }
+
+  // 终止 Worker
+  terminateWorker(): void {
+    if (this.scanWorker) {
+      this.scanWorker.terminate();
+      this.scanWorker = null;
+    }
+  }
+}
+```
+
+#### Worker 配置
+
+要使用 Worker，需要在 `build-profile.json5` 中配置：
+
+```json5
+{
+  "buildOption": {
+    "workers": [
+      "./src/main/ets/workers/DuplicateWorker.ets"
+    ]
+  }
+}
+```
+
+这告诉编译器将 Worker 文件编译为独立的模块。
+
+#### 扫描模式切换
+
+系统支持两种扫描模式，用户可以通过开关切换：
+
+| 模式 | 说明 | 适用场景 |
+|------|------|----------|
+| Worker多线程 | 在独立线程执行扫描 | 默认模式，适合大量文件 |
+| 主线程异步 | 在主线程分批执行 | 兼容模式，适合少量文件 |
+
+```typescript
+// DeduplicationTab.ets
+@State useWorkerScan: boolean = true;  // 默认使用Worker
+
+// 根据开关选择扫描方式
+if (this.useWorkerScan) {
+  this.scanner.fullScanWithWorker(callbacks, onComplete);
+} else {
+  this.scanner.fullScanAsync(callbacks, onComplete);
+}
+```
+
+#### 错误处理与降级
+
+如果 Worker 创建失败（例如设备不支持），系统会自动降级到主线程异步扫描：
+
+```typescript
+try {
+  this.scanWorker = new worker.ThreadWorker('...');
+} catch (error) {
+  console.error('Worker创建失败，降级到主线程扫描');
+  this.fullScanAsync(callbacks, onComplete);  // 降级方案
+}
+```
+
+#### 执行流程图
+
+```
+用户点击"全量扫描"
+        ↓
+检查扫描模式开关
+        ↓
+    ┌───────────────────────────────────┐
+    │  useWorkerScan === true?          │
+    └───────────────────────────────────┘
+        ↓ 是                     ↓ 否
+┌───────────────────┐   ┌───────────────────┐
+│ 创建Worker线程     │   │ 使用主线程异步     │
+│                   │   │ fullScanAsync()   │
+│ new ThreadWorker  │   │                   │
+└───────────────────┘   └───────────────────┘
+        ↓
+┌───────────────────┐
+│ 发送SCAN消息      │
+│                   │
+│ worker.postMessage│
+└───────────────────┘
+        ↓
+┌───────────────────────────────────────────┐
+│ Worker线程开始工作                          │
+│                                           │
+│  ┌─────────────────────────────────────┐  │
+│  │ 循环处理每个文件:                     │  │
+│  │   1. 计算哈希值                      │  │
+│  │   2. 检查是否形成重复组               │  │
+│  │   3. 发送PROGRESS/GROUP_FOUND消息    │  │
+│  └─────────────────────────────────────┘  │
+│                                           │
+│  完成后发送COMPLETE消息                    │
+└───────────────────────────────────────────┘
+        ↓
+┌───────────────────────────────────────────┐
+│ 主线程收到消息                             │
+│                                           │
+│  PROGRESS   → 更新进度条                   │
+│  GROUP_FOUND → 插入重复组列表并排序         │
+│  COMPLETE   → 显示最终结果，终止Worker      │
+└───────────────────────────────────────────┘
+```
 
 #### 性能对比
 
-| 方案 | 总耗时 | UI响应 | 实时反馈 | 实现复杂度 |
-|------|--------|--------|----------|-----------|
-| 同步扫描 | 快 | 阻塞 | 无 | 低 |
-| 异步批处理 | 稍慢(+10%) | 流畅 | 有 | 中 |
-| 多线程(Worker) | 快 | 流畅 | 需消息传递 | 高 |
+| 指标 | 主线程异步 | Worker多线程 |
+|------|-----------|-------------|
+| UI响应 | 略有延迟 | 完全流畅 |
+| 扫描速度 | 基准 | 相近（通信有开销） |
+| CPU利用 | 单核 | 多核并行 |
+| 内存占用 | 较低 | 略高（额外线程） |
+| 实现复杂度 | 简单 | 中等 |
+| 错误处理 | 简单 | 需要消息机制 |
 
-**结论**: 对于文件去重这种I/O密集型任务，异步批处理是最佳方案，在保证用户体验的同时避免了多线程的复杂性。
+#### 关键概念总结
+
+1. **Worker线程**：独立于主线程的执行环境，有自己的运行时
+2. **消息传递**：线程间通信的唯一方式，通过 postMessage 发送
+3. **非共享内存**：Worker不能直接访问主线程的变量
+4. **生命周期**：需要手动创建和终止Worker
+5. **降级方案**：Worker失败时回退到主线程异步执行
 
 ---
 
@@ -979,20 +1256,22 @@ this.dynamicGroups = [...this.dynamicGroups, group]
 
 ```
 entry/src/main/ets/
+├── workers/                          # Worker多线程模块
+│   └── DuplicateWorker.ets           # 文件扫描Worker（独立线程）
 ├── common/utils/
-│   ├── DuplicateScanner.ets   # 重复文件扫描器（核心）
-│   ├── TrashManager.ets       # 回收站管理器
-│   ├── TestDataGenerator.ets  # 测试数据生成器
-│   ├── FileManager.ets        # 文件管理工具
-│   ├── DeleteFile.ets         # 删除文件（调用TrashManager）
-│   ├── ReadFile.ets           # 读取文件
-│   └── WriteFile.ets          # 写入文件
+│   ├── DuplicateScanner.ets          # 重复文件扫描器（核心，支持Worker调用）
+│   ├── TrashManager.ets              # 回收站管理器
+│   ├── TestDataGenerator.ets         # 测试数据生成器
+│   ├── FileManager.ets               # 文件管理工具
+│   ├── DeleteFile.ets                # 删除文件（调用TrashManager）
+│   ├── ReadFile.ets                  # 读取文件
+│   └── WriteFile.ets                 # 写入文件
 ├── view/
-│   ├── DeduplicationTab.ets   # 文件去重页面UI
-│   ├── TrashTab.ets           # 回收站页面UI
-│   ├── TestDataTab.ets        # 测试数据生成页面UI
-│   ├── PublicFilesTab.ets     # 文件管理页面UI
-│   └── ApplicationFileTab.ets # 创建文件页面UI
+│   ├── DeduplicationTab.ets          # 文件去重页面UI（支持切换扫描模式）
+│   ├── TrashTab.ets                  # 回收站页面UI
+│   ├── TestDataTab.ets               # 测试数据生成页面UI
+│   ├── PublicFilesTab.ets            # 文件管理页面UI
+│   └── ApplicationFileTab.ets        # 创建文件页面UI
 └── pages/
-    └── HomePage.ets           # 主页（Tab导航）
+    └── HomePage.ets                  # 主页（Tab导航）
 ```
