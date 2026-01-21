@@ -1,872 +1,0 @@
-Ôr@Ÿªassertions¤code´customTransformCache¬dependencies¢id¤meta±moduleSideEffects¬originalCode±originalSourcemap«resolvedIds®sourcemapChainµsyntheticNamedExportsµtransformDependencies®transformFiles¨cacheAstÔrAÚ1™/*
- * æ–‡ä»¶ç®¡ç†å·¥å…·ç±» - å®ç°æ²™ç®±æ–‡ä»¶æ“ä½œ
- */
-import fs from '@ohos.file.fs';
-import Logger from './Logger';
-import fileIo from "@ohos.file.fs";
-export class FileManager {
-    constructor(context) {
-        this.context = context;
-        // ä» context ä¸­æå– filesDir
-        this.filesDir = this.getFilesDir();
-    }
-    // è·å–æ²™ç®±æ–‡ä»¶ç›®å½•è·¯å¾„ - æ ¹æ®æ‚¨çš„å…·ä½“å®ç°
-    getFilesDir() {
-        // HarmonyOS 4.0+ é€šå¸¸è¿™æ ·è·å– filesDir
-        try {
-            // å°è¯•ä» UIAbilityContext è·å–
-            const uiAbilityContext = this.context;
-            return uiAbilityContext.filesDir;
-        }
-        catch (error) {
-            // å¦‚æœä¸è¡Œï¼Œå°è¯•å…¶ä»–æ–¹å¼
-            return this.context.cacheDir + '/files'; // æˆ–è€…è¿”å›é»˜è®¤è·¯å¾„
-        }
-    }
-    // // 5. æŸ¥è¯¢æ–‡ä»¶ï¼ˆæ ¹æ®å…³é”®å­—ï¼‰
-    // async searchFiles(keyword: string): Promise<Array<string>> {
-    //   try {
-    //     const filesDir = this.getFilesDir();
-    //     const list = fs.listFileSync(filesDir);
-    //     const result: Array<string> = [];
-    //
-    //     for (const file of list) {
-    //       if (keyword === '' || file.toLowerCase().includes(keyword.toLowerCase())) {
-    //         result.push(file);
-    //       }
-    //     }
-    //
-    //     return result;
-    //   } catch (error) {
-    //     Logger.error(`searchFiles failed: ${JSON.stringify(error)}`);
-    //     return [];
-    //   }
-    // }
-    // // 6. è·å–æ‰€æœ‰æ–‡ä»¶åˆ—è¡¨
-    // async getAllFiles(): Promise<Array<string>> {
-    //   return this.searchFiles('');
-    // }
-    // // 8. è·å–æ–‡ä»¶ä¿¡æ¯
-    // async getFileInfo(filename: string): Promise<FileInfoType> {
-    //   try {
-    //     const filePath = this.getFilesDir() + '/' + filename;
-    //     const stat = await fs.stat(filePath);
-    //
-    //     return {
-    //       filename: filename,
-    //       size: stat.size,
-    //       mtime: stat.mtime,
-    //       ctime: stat.ctime
-    //     };
-    //   } catch (error) {
-    //     Logger.error(`getFileInfo failed: ${JSON.stringify(error)}`);
-    //     return {
-    //       filename: '',
-    //       size: 0,
-    //       mtime: 0,
-    //       ctime: 0
-    //     };
-    //   }
-    // }
-    /**
-     * æœç´¢æ–‡ä»¶å¹¶è¿”å›è¯¦ç»†ä¿¡æ¯
-     */
-    async searchFilesWithInfo(keyword) {
-        try {
-            const allFiles = await this.getAllFilesWithInfo();
-            if (!keyword || keyword.trim() === '') {
-                return allFiles;
-            }
-            const searchTerm = keyword.toLowerCase();
-            return allFiles.filter(fileInfo => fileInfo.filename.toLowerCase().includes(searchTerm));
-        }
-        catch (error) {
-            console.error(`æœç´¢æ–‡ä»¶å¤±è´¥: ${error.message}`);
-            return [];
-        }
-    }
-    /**
-     * è·å–å•ä¸ªæ–‡ä»¶çš„è¯¦ç»†ä¿¡æ¯
-     */
-    async getFileInfo(filename) {
-        try {
-            const filePath = this.filesDir + '/' + filename;
-            // æ£€æŸ¥æ–‡ä»¶æ˜¯å¦å­˜åœ¨
-            try {
-                fileIo.accessSync(filePath);
-            }
-            catch (e) {
-                console.log(`æ–‡ä»¶ä¸å­˜åœ¨: ${filename}`);
-                return null;
-            }
-            // è·å–æ–‡ä»¶çŠ¶æ€ä¿¡æ¯
-            const stat = fileIo.statSync(filePath);
-            // æ ¼å¼åŒ–æ–‡ä»¶å¤§å°
-            const sizeReadable = this.formatFileSize(stat.size);
-            // æ ¼å¼åŒ–æ—¶é—´
-            const mtimeFormatted = this.formatDate(stat.mtime);
-            const ctimeFormatted = this.formatDate(stat.ctime);
-            return {
-                filename: filename,
-                size: stat.size,
-                sizeReadable: sizeReadable,
-                mtime: stat.mtime,
-                ctime: stat.ctime,
-                mtimeFormatted: mtimeFormatted,
-                ctimeFormatted: ctimeFormatted
-            };
-        }
-        catch (error) {
-            console.error(`è·å–æ–‡ä»¶ä¿¡æ¯å¤±è´¥: ${error.message}`);
-            return null;
-        }
-    }
-    // ä¿®æ”¹ getAllFilesWithInfo æ–¹æ³•
-    async getAllFilesWithInfo() {
-        try {
-            const filesDir = this.getFilesDir();
-            console.log(`[getAllFilesWithInfo] è¯»å–ç›®å½•: ${filesDir}`);
-            // ä½¿ç”¨ fileIo è€Œä¸æ˜¯ fsï¼ˆä¸ getAllFiles ä¿æŒä¸€è‡´ï¼‰
-            const files = fileIo.listFileSync(filesDir);
-            console.log(`[getAllFilesWithInfo] æ‰¾åˆ°æ–‡ä»¶: ${files.length} ä¸ª`);
-            const fileInfos = [];
-            for (const file of files) {
-                try {
-                    // æ„å»ºå®Œæ•´è·¯å¾„
-                    const filePath = `${filesDir}/${file}`;
-                    // è·å–æ–‡ä»¶ä¿¡æ¯
-                    const stat = fileIo.statSync(filePath);
-                    // è·³è¿‡ç›®å½•ï¼Œåªæ˜¾ç¤ºæ–‡ä»¶
-                    if (stat.isDirectory()) {
-                        console.log(`[getAllFilesWithInfo] è·³è¿‡ç›®å½•: ${file}`);
-                        continue;
-                    }
-                    // æ ¼å¼åŒ–ä¸ºå¯è¯»ä¿¡æ¯
-                    const sizeReadable = this.formatFileSize(stat.size);
-                    const mtimeFormatted = this.formatDate(stat.mtime);
-                    const ctimeFormatted = this.formatDate(stat.ctime);
-                    fileInfos.push({
-                        filename: file,
-                        size: stat.size,
-                        sizeReadable: sizeReadable,
-                        mtime: stat.mtime,
-                        ctime: stat.ctime,
-                        mtimeFormatted: mtimeFormatted,
-                        ctimeFormatted: ctimeFormatted
-                    });
-                }
-                catch (fileError) {
-                    console.warn(`[getAllFilesWithInfo] å¤„ç†æ–‡ä»¶ ${file} å¤±è´¥:`, fileError);
-                    // å³ä½¿è·å–ä¿¡æ¯å¤±è´¥ï¼Œä¹Ÿæ·»åŠ åŸºæœ¬æ–‡ä»¶å
-                    fileInfos.push({
-                        filename: file,
-                        size: 0,
-                        sizeReadable: '0 B',
-                        mtime: Date.now(),
-                        ctime: Date.now(),
-                        mtimeFormatted: 'æœªçŸ¥',
-                        ctimeFormatted: 'æœªçŸ¥'
-                    });
-                }
-            }
-            console.log(`[getAllFilesWithInfo] è¿”å›æ–‡ä»¶ä¿¡æ¯: ${fileInfos.length} ä¸ª`);
-            return fileInfos;
-        }
-        catch (error) {
-            console.error(`[getAllFilesWithInfo] è·å–æ–‡ä»¶åˆ—è¡¨å¤±è´¥:`, error);
-            return [];
-        }
-    }
-    // ç¡®ä¿ formatFileSize å’Œ formatDate æ–¹æ³•æ­£ç¡®å®ç°
-    formatFileSize(bytes) {
-        if (bytes === 0)
-            return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-    }
-    formatDate(timestamp) {
-        try {
-            const date = new Date(timestamp);
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
-        }
-        catch (error) {
-            return 'æœªçŸ¥æ—¥æœŸ';
-        }
-    }
-    //é‡å‘½å
-    /**
-     * é‡å‘½åæ–‡ä»¶
-     * @param oldName åŸæ–‡ä»¶å
-     * @param newName æ–°æ–‡ä»¶å
-     * @returns æ˜¯å¦é‡å‘½åæˆåŠŸ
-     */
-    // 7. æ£€æŸ¥æ–‡ä»¶æ˜¯å¦å­˜åœ¨
-    // async fileExists(filename: string): Promise<boolean> {
-    //   try {
-    //     const filePath = this.getFilesDir() + '/' + filename;
-    //     await fs.access(filePath);
-    //     return true;
-    //   } catch {
-    //     return false;
-    //   }
-    // }
-    // æ£€æŸ¥æ–‡ä»¶æ˜¯å¦å­˜åœ¨ - ä¿®æ­£ç‰ˆæœ¬
-    async fileExists(filename) {
-        try {
-            const filePath = `${this.filesDir}/${filename}`;
-            // ä½¿ç”¨ fileIo.statSync åŒæ­¥æ–¹å¼æ£€æŸ¥ï¼Œæˆ–è€…ä½¿ç”¨å¼‚æ­¥æ–¹å¼
-            try {
-                fileIo.statSync(filePath);
-                return true;
-            }
-            catch (error) {
-                // å¦‚æœæ–‡ä»¶ä¸å­˜åœ¨ï¼ŒstatSync ä¼šæŠ›å‡ºé”™è¯¯
-                return false;
-            }
-            // æˆ–è€…ä½¿ç”¨å¼‚æ­¥æ–¹å¼
-            // await fileIo.stat(filePath);
-            // return true;
-        }
-        catch {
-            return false;
-        }
-    }
-    async renameFile(oldName, newName) {
-        try {
-            // 1. éªŒè¯å‚æ•°
-            if (!oldName || !newName || oldName.trim() === '' || newName.trim() === '') {
-                console.error('é‡å‘½åå¤±è´¥ï¼šæ–‡ä»¶åä¸èƒ½ä¸ºç©º');
-                return false;
-            }
-            // 2. ä¿®å‰ªç©ºæ ¼
-            oldName = oldName.trim();
-            newName = newName.trim();
-            // 3. æ£€æŸ¥æ–°æ—§æ–‡ä»¶åæ˜¯å¦ç›¸åŒ
-            if (oldName === newName) {
-                console.error('é‡å‘½åå¤±è´¥ï¼šæ–°æ—§æ–‡ä»¶åç›¸åŒ');
-                return false;
-            }
-            // 4. éªŒè¯æ–°æ–‡ä»¶åæ˜¯å¦åˆæ³•
-            if (!this.isValidFilename(newName)) {
-                console.error(`é‡å‘½åå¤±è´¥ï¼šæ–°æ–‡ä»¶åä¸åˆæ³• ${newName}`);
-                return false;
-            }
-            // 5. æ„å»ºå®Œæ•´è·¯å¾„
-            const oldPath = `${this.filesDir}/${oldName}`;
-            const newPath = `${this.filesDir}/${newName}`;
-            console.log(`é‡å‘½åæ–‡ä»¶: ${oldPath} -> ${newPath}`);
-            // 6. æ£€æŸ¥åŸæ–‡ä»¶æ˜¯å¦å­˜åœ¨
-            if (!await this.fileExists(oldName)) {
-                console.error(`é‡å‘½åå¤±è´¥ï¼šåŸæ–‡ä»¶ä¸å­˜åœ¨ ${oldName}`);
-                return false;
-            }
-            // 7. æ£€æŸ¥æ–°æ–‡ä»¶åæ˜¯å¦å·²å­˜åœ¨
-            if (await this.fileExists(newName)) {
-                console.error(`é‡å‘½åå¤±è´¥ï¼šæ–°æ–‡ä»¶å·²å­˜åœ¨ ${newName}`);
-                return false;
-            }
-            // 8. æ‰§è¡Œé‡å‘½å
-            try {
-                fileIo.renameSync(oldPath, newPath);
-                console.log(`é‡å‘½åæˆåŠŸ: ${oldName} -> ${newName}`);
-                return true;
-            }
-            catch (error) {
-                console.error(`é‡å‘½åå¤±è´¥: ${error.message || error}`);
-                return false;
-            }
-        }
-        catch (error) {
-            console.error(`é‡å‘½åæ–‡ä»¶æ—¶å‘ç”Ÿé”™è¯¯: ${error}`);
-            return false;
-        }
-    }
-    /**
-     * éªŒè¯æ–‡ä»¶åæ˜¯å¦åˆæ³•
-     * @param filename æ–‡ä»¶å
-     * @returns æ˜¯å¦åˆæ³•
-     */
-    isValidFilename(filename) {
-        if (!filename || filename.trim() === '') {
-            return false;
-        }
-        // æ£€æŸ¥éæ³•å­—ç¬¦
-        const illegalChars = /[<>:"/\\|?*]/;
-        if (illegalChars.test(filename)) {
-            return false;
-        }
-        // æ£€æŸ¥æ–‡ä»¶åé•¿åº¦
-        if (filename.length > 255) {
-            return false;
-        }
-        // æ£€æŸ¥ç³»ç»Ÿä¿ç•™åç§°
-        const reservedNames = ['CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4',
-            'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2',
-            'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'];
-        const nameUpper = filename.split('.')[0].toUpperCase();
-        if (reservedNames.includes(nameUpper)) {
-            return false;
-        }
-        return true;
-    }
-    async updateFile(filename, content) {
-        try {
-            const filePath = this.getFilesDir() + '/' + filename;
-            if (!await this.fileExists(filename)) {
-                return false;
-            }
-            const file = await fs.open(filePath, fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
-            const arrayBuffer = new ArrayBuffer(content.length * 2);
-            const dataView = new DataView(arrayBuffer);
-            for (let i = 0; i < content.length; i++) {
-                dataView.setUint16(i * 2, content.charCodeAt(i), true);
-            }
-            await fs.write(file.fd, arrayBuffer);
-            await fs.close(file);
-            Logger.info(`File updated: ${filename}`);
-            return true;
-        }
-        catch (error) {
-            Logger.error(`updateFile failed: ${JSON.stringify(error)}`);
-            return false;
-        }
-    }
-}
-//# sourceMappingURL=FileManager.js.mapÂ’Ùj hvigor_ignore__Applications_DevEco-Studio.app_Contents_sdk_default_openharmony_ets_api_@ohos.file.fs.d.tsÙY/Users/tassel/Documents/Project/OS/File_Manage/entry/src/main/ets/common/utils/Logger.etsÙ^/Users/tassel/Documents/Project/OS/File_Manage/entry/src/main/ets/common/utils/FileManager.etsÔrBœªmoduleName±isLocalDependency¯isNodeEntryFile§pkgPath±belongProjectPath§pkgNameªpkgVersion±dependencyPkgInfo¯hostModulesInfo°belongModulePath§checker¬shouldEmitJs¥entryÃÂÙ4/Users/tassel/Documents/Project/OS/File_Manage/entryÙ./Users/tassel/Documents/Project/OS/File_Manage¥entry¥1.0.0Ô  ‘ÔrC’²hostDependencyName®hostModuleName»../common/utils/FileManager¥entryÙ4/Users/tassel/Documents/Project/OS/File_Manage/entryÔrDÜ ®¬getNodeCount²getIdentifierCount®getSymbolCount¬getTypeCountµgetInstantiationCountµgetRelationCacheSizes±isUndefinedSymbol±isArgumentsSymbol¯isUnknownSymbol¯getMergedSymbol®getDiagnostics´getGlobalDiagnostics´getRecursionIdentity¶getUnmatchedProperties¹getTypeOfSymbolAtLocation¯getTypeOfSymbolÙ(getSymbolsOfParameterPropertyDeclaration·getDeclaredTypeOfSymbol³getPropertiesOfType±getPropertyOfTypeÙ"getPrivateIdentifierPropertyOfType·getTypeOfPropertyOfType²getIndexInfoOfType³getIndexInfosOfTypeºgetIndexInfosOfIndexSymbol³getSignaturesOfType²getIndexTypeOfType¬getIndexType¬getBaseTypes¸getBaseTypeOfLiteralType®getWidenedType³getTypeFromTypeNode°getParameterTypeÙ$getParameterIdentifierNameAtPosition¸getPromisedTypeOfPromise®getAwaitedType¸getReturnTypeOfSignature®isNullableType¯getNullableType²getNonNullableType²getNonOptionalType°getTypeArguments®typeToTypeNodeÙ$indexInfoToIndexSignatureDeclaration¿signatureToSignatureDeclaration²symbolToEntityName²symbolToExpression¬symbolToNodeÙ!symbolToTypeParameterDeclarations¼symbolToParameterDeclarationºtypeParameterToDeclaration±getSymbolsInScope³getSymbolAtLocation·getIndexInfosAtLocationÙ!getShorthandAssignmentValueSymbolÙ#getExportSpecifierLocalTargetSymbol·getExportSymbolOfSymbol±getTypeAtLocationºgetTypeAtLocationForLinterÙ tryGetTypeAtLocationWithoutCheckºgetTypeOfAssignmentPatternÙ*getPropertySymbolOfDestructuringAssignment±signatureToString¬typeToString®symbolToStringµtypePredicateToString®writeSignature©writeType«writeSymbol²writeTypePredicate¼getAugmentedPropertiesOfType®getRootSymbols²getSymbolOfExpando±getContextualTypeÙ(getContextualTypeForObjectLiteralElementÙ#getContextualTypeForArgumentAtIndexÙ getContextualTypeForJsxAttribute²isContextSensitiveÙ!getTypeOfPropertyOfContextualTypeµgetFullyQualifiedNameÙ#tryGetResolvedSignatureWithoutCheck´getResolvedSignatureÙ/getResolvedSignatureForStringLiteralCompletionsÙ$getResolvedSignatureForSignatureHelpµgetExpandedParameters¹hasEffectiveRestParameterºcontainsArgumentsReference°getConstantValueµisValidPropertyAccessÙ#isValidPropertyAccessForCompletions»getSignatureFromDeclarationºisImplementationOfOverload¹getImmediateAliasedSymbol°getAliasedSymbol¯getEmitResolver²getExportsOfModule¿getExportsAndPropertiesOfModuleÙ forEachExportAndPropertyOfModule¯getSymbolWalker±getAmbientModules¹getJsxIntrinsicTagNamesAt³isOptionalParameter»tryGetMemberInModuleExportsÙ(tryGetMemberInModuleExportsAndProperties´tryFindAmbientModuleÙ(tryFindAmbientModuleWithoutAugmentations¯getApparentType¬getUnionType²isTypeAssignableTo³createAnonymousType¯createSignature¬createSymbol¯createIndexInfoªgetAnyType­getStringType­getNumberType±createPromiseType¯createArrayType¹getElementTypeOfArrayType®getBooleanType¬getFalseType«getTrueType«getVoidType°getUndefinedType«getNullType¯getESSymbolType¬getNeverType¯getOptionalType®getPromiseType²getPromiseLikeType´getAsyncIterableType²isSymbolAccessible«isArrayType«isTupleType¯isArrayLikeTypeÙ#isTypeInvalidDueToUnionDiscriminantºgetExactOptionalProperties¿getAllPossiblePropertiesOfTypesÙ(getSuggestedSymbolForNonexistentPropertyÙ#getSuggestionForNonexistentPropertyÙ,getSuggestedSymbolForNonexistentJSXAttributeÙ&getSuggestedSymbolForNonexistentSymbolÙ!getSuggestionForNonexistentSymbolÙ&getSuggestedSymbolForNonexistentModuleÙ!getSuggestionForNonexistentExportÙ+getSuggestedSymbolForNonexistentClassMember·getBaseConstraintOfType»getDefaultFromTypeParameter«resolveName¯getJsxNamespaceµgetJsxFragmentFactory¸getAccessibleSymbolChain»getTypePredicateOfSignature¹resolveExternalModuleName»resolveExternalModuleSymbol°tryGetThisTypeAt¹getTypeArgumentConstraint¸getSuggestionDiagnostics¸runWithCancellationTokenÙ3getLocalTypeParametersOfClassOrInterfaceOrTypeAlias´isDeclarationVisible´isPropertyAccessible»getTypeOnlyAliasDeclaration¿getMemberOverrideModifierStatusÙ!isTypeParameterPossiblyReferenced²getConstEnumRelate´clearConstEnumRelateµdeleteConstEnumRelateÙ$getTypeArgumentsForResolvedSignatureµgetCheckedSourceFilesÙ"collectHaveTsNoCheckFilesForLinter·clearQualifiedNameCache®isStaticRecord²isStaticSourceFileÔ  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  Ô  ÃÃÚ.£/*
- * æ–‡ä»¶ç®¡ç†å·¥å…·ç±» - å®ç°æ²™ç®±æ–‡ä»¶æ“ä½œ
- */
-
-import fs from '@ohos.file.fs';
-import { common } from '@kit.AbilityKit';
-import Logger from './Logger';
-import { fileIo } from '@kit.CoreFileKit';
-
-interface FileInfoType {
-  filename: string;
-  size: number;
-  mtime: number;
-  ctime: number;
-}
-
-export interface FileInfo {
-  filename: string;
-  size: number;        // æ–‡ä»¶å¤§å°ï¼ˆå­—èŠ‚ï¼‰
-  sizeReadable: string; // å¯è¯»çš„æ–‡ä»¶å¤§å°ï¼ˆå¦‚ "2.5 MB"ï¼‰
-  mtime: number;       // ä¿®æ”¹æ—¶é—´ï¼ˆæ—¶é—´æˆ³ï¼‰
-  ctime: number;       // åˆ›å»ºæ—¶é—´ï¼ˆæ—¶é—´æˆ³ï¼‰
-  mtimeFormatted: string; // æ ¼å¼åŒ–çš„ä¿®æ”¹æ—¶é—´
-  ctimeFormatted: string; // æ ¼å¼åŒ–çš„åˆ›å»ºæ—¶é—´
-}
-
-export class FileManager {
-  private context: Context;
-  private filesDir: string; // æ–°å¢ filesDir å±æ€§
-
-  constructor(context: Context) {
-    this.context = context;
-    // ä» context ä¸­æå– filesDir
-    this.filesDir = this.getFilesDir();
-  }
-
-  // è·å–æ²™ç®±æ–‡ä»¶ç›®å½•è·¯å¾„ - æ ¹æ®æ‚¨çš„å…·ä½“å®ç°
-  private getFilesDir(): string {
-    // HarmonyOS 4.0+ é€šå¸¸è¿™æ ·è·å– filesDir
-    try {
-      // å°è¯•ä» UIAbilityContext è·å–
-      const uiAbilityContext = this.context as common.UIAbilityContext;
-      return uiAbilityContext.filesDir;
-    } catch (error) {
-      // å¦‚æœä¸è¡Œï¼Œå°è¯•å…¶ä»–æ–¹å¼
-      return this.context.cacheDir + '/files'; // æˆ–è€…è¿”å›é»˜è®¤è·¯å¾„
-    }
-  }
-
-
-
-  // // 5. æŸ¥è¯¢æ–‡ä»¶ï¼ˆæ ¹æ®å…³é”®å­—ï¼‰
-  // async searchFiles(keyword: string): Promise<Array<string>> {
-  //   try {
-  //     const filesDir = this.getFilesDir();
-  //     const list = fs.listFileSync(filesDir);
-  //     const result: Array<string> = [];
-  //
-  //     for (const file of list) {
-  //       if (keyword === '' || file.toLowerCase().includes(keyword.toLowerCase())) {
-  //         result.push(file);
-  //       }
-  //     }
-  //
-  //     return result;
-  //   } catch (error) {
-  //     Logger.error(`searchFiles failed: ${JSON.stringify(error)}`);
-  //     return [];
-  //   }
-  // }
-
-  // // 6. è·å–æ‰€æœ‰æ–‡ä»¶åˆ—è¡¨
-  // async getAllFiles(): Promise<Array<string>> {
-  //   return this.searchFiles('');
-  // }
-
-
-  // // 8. è·å–æ–‡ä»¶ä¿¡æ¯
-  // async getFileInfo(filename: string): Promise<FileInfoType> {
-  //   try {
-  //     const filePath = this.getFilesDir() + '/' + filename;
-  //     const stat = await fs.stat(filePath);
-  //
-  //     return {
-  //       filename: filename,
-  //       size: stat.size,
-  //       mtime: stat.mtime,
-  //       ctime: stat.ctime
-  //     };
-  //   } catch (error) {
-  //     Logger.error(`getFileInfo failed: ${JSON.stringify(error)}`);
-  //     return {
-  //       filename: '',
-  //       size: 0,
-  //       mtime: 0,
-  //       ctime: 0
-  //     };
-  //   }
-  // }
-  /**
-   * æœç´¢æ–‡ä»¶å¹¶è¿”å›è¯¦ç»†ä¿¡æ¯
-   */
-  async searchFilesWithInfo(keyword: string): Promise<FileInfo[]> {
-    try {
-      const allFiles = await this.getAllFilesWithInfo();
-
-      if (!keyword || keyword.trim() === '') {
-        return allFiles;
-      }
-
-      const searchTerm = keyword.toLowerCase();
-      return allFiles.filter(fileInfo =>
-      fileInfo.filename.toLowerCase().includes(searchTerm)
-      );
-    } catch (error) {
-      console.error(`æœç´¢æ–‡ä»¶å¤±è´¥: ${error.message}`);
-      return [];
-    }
-  }
-  /**
-   * è·å–å•ä¸ªæ–‡ä»¶çš„è¯¦ç»†ä¿¡æ¯
-   */
-  async getFileInfo(filename: string): Promise<FileInfo | null> {
-    try {
-      const filePath = this.filesDir + '/' + filename;
-
-      // æ£€æŸ¥æ–‡ä»¶æ˜¯å¦å­˜åœ¨
-      try {
-        fileIo.accessSync(filePath);
-      } catch (e) {
-        console.log(`æ–‡ä»¶ä¸å­˜åœ¨: ${filename}`);
-        return null;
-      }
-
-      // è·å–æ–‡ä»¶çŠ¶æ€ä¿¡æ¯
-      const stat = fileIo.statSync(filePath);
-
-      // æ ¼å¼åŒ–æ–‡ä»¶å¤§å°
-      const sizeReadable = this.formatFileSize(stat.size);
-
-      // æ ¼å¼åŒ–æ—¶é—´
-      const mtimeFormatted = this.formatDate(stat.mtime);
-      const ctimeFormatted = this.formatDate(stat.ctime);
-
-      return {
-        filename: filename,
-        size: stat.size,
-        sizeReadable: sizeReadable,
-        mtime: stat.mtime,
-        ctime: stat.ctime,
-        mtimeFormatted: mtimeFormatted,
-        ctimeFormatted: ctimeFormatted
-      };
-    } catch (error) {
-      console.error(`è·å–æ–‡ä»¶ä¿¡æ¯å¤±è´¥: ${error.message}`);
-      return null;
-    }
-  }
-
-  // ä¿®æ”¹ getAllFilesWithInfo æ–¹æ³•
-  async getAllFilesWithInfo(): Promise<FileInfo[]> {
-    try {
-      const filesDir = this.getFilesDir();
-      console.log(`[getAllFilesWithInfo] è¯»å–ç›®å½•: ${filesDir}`);
-
-      // ä½¿ç”¨ fileIo è€Œä¸æ˜¯ fsï¼ˆä¸ getAllFiles ä¿æŒä¸€è‡´ï¼‰
-      const files = fileIo.listFileSync(filesDir);
-      console.log(`[getAllFilesWithInfo] æ‰¾åˆ°æ–‡ä»¶: ${files.length} ä¸ª`);
-
-      const fileInfos: FileInfo[] = [];
-
-      for (const file of files) {
-        try {
-          // æ„å»ºå®Œæ•´è·¯å¾„
-          const filePath = `${filesDir}/${file}`;
-
-          // è·å–æ–‡ä»¶ä¿¡æ¯
-          const stat = fileIo.statSync(filePath);
-
-          // è·³è¿‡ç›®å½•ï¼Œåªæ˜¾ç¤ºæ–‡ä»¶
-          if (stat.isDirectory()) {
-            console.log(`[getAllFilesWithInfo] è·³è¿‡ç›®å½•: ${file}`);
-            continue;
-          }
-
-          // æ ¼å¼åŒ–ä¸ºå¯è¯»ä¿¡æ¯
-          const sizeReadable = this.formatFileSize(stat.size);
-          const mtimeFormatted = this.formatDate(stat.mtime);
-          const ctimeFormatted = this.formatDate(stat.ctime);
-
-          fileInfos.push({
-            filename: file,
-            size: stat.size,
-            sizeReadable: sizeReadable,
-            mtime: stat.mtime,
-            ctime: stat.ctime,
-            mtimeFormatted: mtimeFormatted,
-            ctimeFormatted: ctimeFormatted
-          });
-
-        } catch (fileError) {
-          console.warn(`[getAllFilesWithInfo] å¤„ç†æ–‡ä»¶ ${file} å¤±è´¥:`, fileError);
-          // å³ä½¿è·å–ä¿¡æ¯å¤±è´¥ï¼Œä¹Ÿæ·»åŠ åŸºæœ¬æ–‡ä»¶å
-          fileInfos.push({
-            filename: file,
-            size: 0,
-            sizeReadable: '0 B',
-            mtime: Date.now(),
-            ctime: Date.now(),
-            mtimeFormatted: 'æœªçŸ¥',
-            ctimeFormatted: 'æœªçŸ¥'
-          });
-        }
-      }
-
-      console.log(`[getAllFilesWithInfo] è¿”å›æ–‡ä»¶ä¿¡æ¯: ${fileInfos.length} ä¸ª`);
-      return fileInfos;
-
-    } catch (error) {
-      console.error(`[getAllFilesWithInfo] è·å–æ–‡ä»¶åˆ—è¡¨å¤±è´¥:`, error);
-      return [];
-    }
-  }
-
-  // ç¡®ä¿ formatFileSize å’Œ formatDate æ–¹æ³•æ­£ç¡®å®ç°
-  private formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 B';
-
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-  }
-
-  private formatDate(timestamp: number): string {
-    try {
-      const date = new Date(timestamp);
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-
-      return `${year}-${month}-${day}`;
-    } catch (error) {
-      return 'æœªçŸ¥æ—¥æœŸ';
-    }
-  }
-  //é‡å‘½å
-  /**
-   * é‡å‘½åæ–‡ä»¶
-   * @param oldName åŸæ–‡ä»¶å
-   * @param newName æ–°æ–‡ä»¶å
-   * @returns æ˜¯å¦é‡å‘½åæˆåŠŸ
-   */
-  // 7. æ£€æŸ¥æ–‡ä»¶æ˜¯å¦å­˜åœ¨
-  // async fileExists(filename: string): Promise<boolean> {
-  //   try {
-  //     const filePath = this.getFilesDir() + '/' + filename;
-  //     await fs.access(filePath);
-  //     return true;
-  //   } catch {
-  //     return false;
-  //   }
-  // }
-
-  // æ£€æŸ¥æ–‡ä»¶æ˜¯å¦å­˜åœ¨ - ä¿®æ­£ç‰ˆæœ¬
-  async fileExists(filename: string): Promise<boolean> {
-    try {
-      const filePath = `${this.filesDir}/${filename}`;
-
-      // ä½¿ç”¨ fileIo.statSync åŒæ­¥æ–¹å¼æ£€æŸ¥ï¼Œæˆ–è€…ä½¿ç”¨å¼‚æ­¥æ–¹å¼
-      try {
-        fileIo.statSync(filePath);
-        return true;
-      } catch (error) {
-        // å¦‚æœæ–‡ä»¶ä¸å­˜åœ¨ï¼ŒstatSync ä¼šæŠ›å‡ºé”™è¯¯
-        return false;
-      }
-
-      // æˆ–è€…ä½¿ç”¨å¼‚æ­¥æ–¹å¼
-      // await fileIo.stat(filePath);
-      // return true;
-    } catch {
-      return false;
-    }
-  }
-
-  async renameFile(oldName: string, newName: string): Promise<boolean> {
-    try {
-      // 1. éªŒè¯å‚æ•°
-      if (!oldName || !newName || oldName.trim() === '' || newName.trim() === '') {
-        console.error('é‡å‘½åå¤±è´¥ï¼šæ–‡ä»¶åä¸èƒ½ä¸ºç©º');
-        return false;
-      }
-
-      // 2. ä¿®å‰ªç©ºæ ¼
-      oldName = oldName.trim();
-      newName = newName.trim();
-
-      // 3. æ£€æŸ¥æ–°æ—§æ–‡ä»¶åæ˜¯å¦ç›¸åŒ
-      if (oldName === newName) {
-        console.error('é‡å‘½åå¤±è´¥ï¼šæ–°æ—§æ–‡ä»¶åç›¸åŒ');
-        return false;
-      }
-
-      // 4. éªŒè¯æ–°æ–‡ä»¶åæ˜¯å¦åˆæ³•
-      if (!this.isValidFilename(newName)) {
-        console.error(`é‡å‘½åå¤±è´¥ï¼šæ–°æ–‡ä»¶åä¸åˆæ³• ${newName}`);
-        return false;
-      }
-
-      // 5. æ„å»ºå®Œæ•´è·¯å¾„
-      const oldPath = `${this.filesDir}/${oldName}`;
-      const newPath = `${this.filesDir}/${newName}`;
-
-      console.log(`é‡å‘½åæ–‡ä»¶: ${oldPath} -> ${newPath}`);
-
-      // 6. æ£€æŸ¥åŸæ–‡ä»¶æ˜¯å¦å­˜åœ¨
-      if (!await this.fileExists(oldName)) {
-        console.error(`é‡å‘½åå¤±è´¥ï¼šåŸæ–‡ä»¶ä¸å­˜åœ¨ ${oldName}`);
-        return false;
-      }
-
-      // 7. æ£€æŸ¥æ–°æ–‡ä»¶åæ˜¯å¦å·²å­˜åœ¨
-      if (await this.fileExists(newName)) {
-        console.error(`é‡å‘½åå¤±è´¥ï¼šæ–°æ–‡ä»¶å·²å­˜åœ¨ ${newName}`);
-        return false;
-      }
-
-      // 8. æ‰§è¡Œé‡å‘½å
-      try {
-        fileIo.renameSync(oldPath, newPath);
-        console.log(`é‡å‘½åæˆåŠŸ: ${oldName} -> ${newName}`);
-        return true;
-      } catch (error) {
-        console.error(`é‡å‘½åå¤±è´¥: ${error.message || error}`);
-        return false;
-      }
-
-    } catch (error) {
-      console.error(`é‡å‘½åæ–‡ä»¶æ—¶å‘ç”Ÿé”™è¯¯: ${error}`);
-      return false;
-    }
-  }
-
-  /**
-   * éªŒè¯æ–‡ä»¶åæ˜¯å¦åˆæ³•
-   * @param filename æ–‡ä»¶å
-   * @returns æ˜¯å¦åˆæ³•
-   */
-  private isValidFilename(filename: string): boolean {
-    if (!filename || filename.trim() === '') {
-      return false;
-    }
-
-    // æ£€æŸ¥éæ³•å­—ç¬¦
-    const illegalChars = /[<>:"/\\|?*]/;
-    if (illegalChars.test(filename)) {
-      return false;
-    }
-
-    // æ£€æŸ¥æ–‡ä»¶åé•¿åº¦
-    if (filename.length > 255) {
-      return false;
-    }
-
-    // æ£€æŸ¥ç³»ç»Ÿä¿ç•™åç§°
-    const reservedNames = ['CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4',
-      'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2',
-      'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'];
-    const nameUpper = filename.split('.')[0].toUpperCase();
-    if (reservedNames.includes(nameUpper)) {
-      return false;
-    }
-
-    return true;
-  }
-
-  async updateFile(filename: string, content: string): Promise<boolean> {
-    try {
-      const filePath = this.getFilesDir() + '/' + filename;
-      if (!await this.fileExists(filename)) {
-        return false;
-      }
-
-      const file = await fs.open(filePath, fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
-      const arrayBuffer = new ArrayBuffer(content.length * 2);
-      const dataView = new DataView(arrayBuffer);
-
-      for (let i = 0; i < content.length; i++) {
-        dataView.setUint16(i * 2, content.charCodeAt(i), true);
-      }
-
-      await fs.write(file.fd, arrayBuffer);
-      await fs.close(file);
-
-      Logger.info(`File updated: ${filename}`);
-      return true;
-    } catch (error) {
-      Logger.error(`updateFile failed: ${JSON.stringify(error)}`);
-      return false;
-    }
-  }
-
-
-}
-ÀÔrE’­@ohos.file.fs¨./LoggerÔrF—ªassertions¨external¢id¤meta±moduleSideEffectsªresolvedByµsyntheticNamedExportsAÃÙj hvigor_ignore__Applications_DevEco-Studio.app_Contents_sdk_default_openharmony_ets_api_@ohos.file.fs.d.tsAÃªoh-resolveÂFAÂÙY/Users/tassel/Documents/Project/OS/File_Manage/entry/src/main/ets/common/utils/Logger.etsAÃªoh-resolveÂ“ÔrG–§version¤fileªsourceRoot§sources¥names¨mappings®FileManager.js ‘¯FileManager.etsÜS‘”    ‘” –”   ” ”	 	” ” ” –”   ” ” ” ” ” –”   ” 	” ” ”" )”# *””   ” ” ” “” ” ” —” ” ” 	” ” ” ” ’”  ”!  š” !” !” !	” !” !” !” !”( !$”* !&”+ !'’” "” "’” $” $’” %
-” %’” &”) &%’” '” '’” (”& ( ˜” )” )”" )”% )”) )#”* )$”1 )ÌF”2 )ÌG–” *” *”# *”$ *”, *&”- *'‘”	 +”” +” +” +” +’” ,” ,œ” -” -” -” -” -”  -”( -"”+ -%”3 --”4 -.”5 -/”Ì@ -:‘”	 .’” /” /’” 3” 3’” 4”ÌC 4ÌA’” 5” 5’” 6”/ 6-’” 7”2 70’” 8”, 8*’” 9” 9’” :”% :#’” ;”ÌX ;ÌV’” <”! <’” =” =’” >” >
-’” ?” ?’” Ì@” Ì@’” ÌA” ÌA’” ÌB”ÌH ÌBÌF’” ÌC” ÌC’” ÌD”
- ÌD’” ÌE” ÌE’” ÌG” ÌG’” ÌH”4 ÌH2’” ÌI”% ÌI#’” ÌJ” ÌJ’” ÌM” ÌM’” ÌN”ÌC ÌNÌA’” ÌO” ÌO’” ÌP”Ì@ ÌP>’” ÌQ”0 ÌQ.’” ÌR” ÌR’” ÌS” ÌS’” ÌT”  ÌT’” ÌU” ÌU’” ÌV” ÌV’” ÌW” ÌW’” ÌX” ÌX’” ÌY” ÌY’” ÌZ”ÌH ÌZÌF’” Ì[” Ì[’” Ì\” Ì\’” Ì]” Ì]’” Ì^” Ì^’” Ì_” Ì_’” Ì`” Ì`’” Ìa”
- Ìa’” Ìb” Ìb‘” Ìc‘” Ìe–” Ìf”	 Ìf”
- Ìf” Ìf” Ìf”% Ìf+’” Ìg” Ìgš” Ìh” Ìh” Ìh” Ìh”# Ìh”' Ìh!”( Ìh"”; Ìh5”= Ìh7”> Ìh8œ” Ìj” Ìj
-” Ìj” Ìj” Ìj”# Ìj”$ Ìj”( Ìj"”* Ìj$”/ Ìj)”1 Ìj+”3 Ìj-”” Ìk” Ìk” Ìk”  Ìk‘” Ìl™” Ìn” Ìn” Ìn” Ìn”& Ìn ”' Ìn!”2 Ìn,”4 Ìn.”5 Ìn/Ü ” Ìo” Ìo” Ìo” Ìo”" Ìo”# Ìo”+ Ìo%”, Ìo&”. Ìo(”/ Ìp”7 Ìp”8 Ìp”Ì@ Ìp”ÌA Ìp”ÌL Ìp#”ÌN Ìp%”ÌO Ìp&”ÌW Ìp.”ÌX Ìp/”Ìb Ìp9”Ìc Ìp:”Ìd Ìq”Ìe Ìq‘”	 Ìr”” Ìr” Ìr” Ìr” Ìrœ” Ìs” Ìs” Ìs” Ìs” Ìs”% Ìs”* Ìs$”+ Ìs%”2 Ìs,”4 Ìs.”5 Ìs/”6 Ìs0”” Ìt” Ìt” Ìt” Ìt‘”	 Ìu’” Ìv” Ìv‘” Ìw‘” Ìy–” Ìz”	 Ìz”
- Ìz” Ìz” Ìz” Ìz$’” Ì{” Ì{œ” Ì|” Ì|” Ì|” Ì|”! Ì|”" Ì|”* Ì|$”- Ì|'”0 Ì|*”3 Ì|-”; Ì|5”< Ì|6’” Ì~” Ì~’” Ì” Ì
-˜” Ì€” Ì€” Ì€”! Ì€”" Ì€”* Ì€"”+ Ì€#”, Ì€$‘” Ì”” Ì” Ì” Ì” Ìš” Ì‚” Ì‚” Ì‚” Ì‚” Ì‚”& Ì‚”. Ì‚&”0 Ì‚(”1 Ì‚)”2 Ì‚*”” Ìƒ” Ìƒ” Ìƒ” Ìƒ‘” Ì„’” Ì†” Ì†›” Ì‡” Ì‡” Ì‡” Ì‡” Ì‡”  Ì‡”( Ì‡"”) Ì‡#”1 Ì‡+”2 Ì‡,”3 Ì‡-’” Ì‰” Ì‰” ÌŠ” ÌŠ” ÌŠ”! ÌŠ”% ÌŠ”& ÌŠ ”4 ÌŠ.”5 ÌŠ/”9 ÌŠ3”: ÌŠ4”> ÌŠ8”? ÌŠ9”Ì@ ÌŠ:’” ÌŒ” ÌŒ” Ì” Ì”  Ì”# Ì”' Ì!”( Ì"”2 Ì,”3 Ì-”7 Ì1”8 Ì2”= Ì7”> Ì8”? Ì9” Ì” Ì”  Ì”# Ì”' Ì!”( Ì"”2 Ì,”3 Ì-”7 Ì1”8 Ì2”= Ì7”> Ì8”? Ì9’” Ì” Ì”” Ì‘” Ì‘” Ì‘”" Ì‘–” Ì’” Ì’” Ì’” Ì’” Ì’” Ì’”” Ì“” Ì“” Ì“”* Ì“"–” Ì”” Ì”” Ì”” Ì”” Ì””! Ì”–” Ì•” Ì•” Ì•” Ì•” Ì•”! Ì•”” Ì–” Ì–”  Ì–”. Ì–&”” Ì—” Ì—”  Ì—”. Ì—&’” Ì˜” Ì˜‘”	 Ì™”” Ì™” Ì™” Ì™” Ì™œ” Ìš” Ìš” Ìš” Ìš” Ìš”' Ìš!”, Ìš&”- Ìš'”4 Ìš.”6 Ìš0”7 Ìš1”8 Ìš2”” Ì›” Ì›” Ì›” Ì›‘”	 Ìœ’” Ì” Ì’” ÌŸ”  ÌŸ”” Ì ”	 Ì ”
- Ì ” Ì ’” Ì¡” Ì¡™” Ì¢” Ì¢” Ì¢” Ì¢”! Ì¢”" Ì¢”- Ì¢'”/ Ì¢)”0 Ì¢*š” Ì£” Ì£” Ì£” Ì£” Ì£”7 Ì£1”? Ì£9”ÌA Ì£;”ÌB Ì£<”ÌC Ì£=’” Ì¥”3 Ì¥-›” Ì¦” Ì¦” Ì¦” Ì¦”  Ì¦”! Ì¦”- Ì¦'”. Ì¦(”6 Ì¦0”7 Ì¦1”8 Ì¦2œ” Ì§” Ì§” Ì§” Ì§” Ì§”7 Ì§1”< Ì§6”= Ì§7”ÌC Ì§=”ÌG Ì§ÌA”ÌH Ì§ÌB”ÌI Ì§ÌC–” Ì©” Ì©” Ì©” Ì©$”  Ì©&”! Ì©'—” Ì«” Ì«” Ì«” Ì«” Ì«”$ Ì«”& Ì« ’” Ì¬” Ì¬’” Ì­
-” Ì­š” Ì®
-” Ì®”" Ì®”% Ì®”( Ì®”0 Ì®&”4 Ì®*”8 Ì®.”: Ì®0”; Ì®1’” Ì°
-” Ì°›” Ì±
-” Ì±” Ì±”! Ì±”' Ì±”( Ì±”0 Ì±&”1 Ì±'”9 Ì±/”: Ì±0”; Ì±1’” Ì³
-”! Ì³—” Ì´
-” Ì´” Ì´” Ì´”( Ì´”* Ì´ ”, Ì´"š” Ìµ” Ìµ”  Ìµ”# Ìµ”$ Ìµ”ÌC Ìµ7”ÌG Ìµ;”ÌI Ìµ=”ÌJ Ìµ>”ÌK Ìµ?’” Ì¶”! Ì¶‘” Ì·’” Ì¹
-” Ì¹” Ìº
-” Ìº”& Ìº”) Ìº”- Ìº#”. Ìº$”< Ìº2”= Ìº3”ÌA Ìº7”ÌB Ìº8”ÌF Ìº<”ÌG Ìº=”ÌH Ìº>” Ì»
-” Ì»”( Ì»”+ Ì»!”/ Ì»%”0 Ì»&”: Ì»0”; Ì»1”? Ì»5”Ì@ Ì»6”ÌE Ì»;”ÌF Ì»<”ÌG Ì»=” Ì¼
-” Ì¼”( Ì¼”+ Ì¼!”/ Ì¼%”0 Ì¼&”: Ì¼0”; Ì¼1”? Ì¼5”Ì@ Ì¼6”ÌE Ì¼;”ÌF Ì¼<”ÌG Ì¼=•” Ì¾
-” Ì¾” Ì¾”" Ì¾”# Ì¾”” Ì¿”  Ì¿”" Ì¿”& Ì¿–” ÌÀ” ÌÀ” ÌÀ”" ÌÀ”# ÌÀ”' ÌÀ”” ÌÁ”$ ÌÁ”& ÌÁ”2 ÌÁ&–” ÌÂ” ÌÂ” ÌÂ”# ÌÂ”$ ÌÂ”) ÌÂ–” ÌÃ” ÌÃ” ÌÃ”# ÌÃ”$ ÌÃ”) ÌÃ”” ÌÄ”& ÌÄ”( ÌÄ”6 ÌÄ*”” ÌÅ”& ÌÅ”( ÌÅ”6 ÌÅ*“” ÌÆ” ÌÆ” ÌÆ‘” ÌÈ	”” ÌÈ
-” ÌÈ”  ÌÈ”" ÌÈœ” ÌÉ
-” ÌÉ” ÌÉ”  ÌÉ”! ÌÉ”? ÌÉ5”ÌC ÌÉ9”ÌI ÌÉ?”ÌK ÌÉÌA”ÌT ÌÉÌJ”ÌU ÌÉÌK”ÌV ÌÉÌL’” ÌÊ
-”( ÌÊ•” ÌË
-” ÌË” ÌË”" ÌË”# ÌË”” ÌÌ”  ÌÌ”" ÌÌ”& ÌÌ”” ÌÍ” ÌÍ” ÌÍ” ÌÍ”” ÌÎ”$ ÌÎ”& ÌÎ”+ ÌÎ—” ÌÏ” ÌÏ” ÌÏ”# ÌÏ”$ ÌÏ”' ÌÏ”) ÌÏ—” ÌĞ” ÌĞ” ÌĞ”# ÌĞ”$ ÌĞ”' ÌĞ”) ÌĞ”” ÌÑ”& ÌÑ”( ÌÑ”, ÌÑ ”” ÌÒ”& ÌÒ”( ÌÒ”, ÌÒ “” ÌÓ” ÌÓ” ÌÓ‘” ÌÔ	‘” ÌÕœ” Ì×” Ì×” Ì×” Ì×” Ì×”9 Ì×3”ÌB Ì×<”ÌC Ì×=”ÌI Ì×ÌC”ÌM Ì×ÌG”ÌN Ì×ÌH”ÌO Ì×ÌI”” ÌØ” ÌØ” ÌØ” ÌØ‘”	 ÌÚ”” ÌÚ” ÌÚ” ÌÚ” ÌÚš” ÌÛ” ÌÛ” ÌÛ” ÌÛ” ÌÛ”; ÌÛ5”= ÌÛ7”ÌB ÌÛ<”ÌC ÌÛ=”ÌD ÌÛ>”” ÌÜ” ÌÜ” ÌÜ” ÌÜ‘”	 Ìİ’” ÌŞ” ÌŞ’” Ìà”, Ìà*”” Ìá
-” Ìá” Ìá” Ìá&•” Ìâ” Ìâ” Ìâ” Ìâ” Ìâ”” Ìâ” Ìâ” Ìâ!” Ìâ"–” Ìä” Ìä
-” Ìä” Ìä” Ìä” Ìä” Ìå” Ìå
-” Ìå” Ìå” Ìå” Ìå” Ìå”  Ìå”" Ìå”& Ìå"”( Ìå$”, Ìå(”- Ìå)”. Ìå*Ü ” Ìæ” Ìæ
-” Ìæ” Ìæ” Ìæ” Ìæ” Ìæ” Ìæ”! Ìæ”" Ìæ”% Ìæ!”& Ìæ"”+ Ìæ'”, Ìæ(”/ Ìæ+”3 Ìæ/”4 Ìæ0”7 Ìæ3”8 Ìæ4”9 Ìæ5”: Ìæ6”; Ìæ7”< Ìæ8Ü ” Ìè” Ìè” Ìè” Ìè” Ìè” Ìè”# Ìè”& Ìè"”* Ìè&”+ Ìè'”. Ìè*”/ Ìè+”0 Ìè,”2 Ìè.”3 Ìè/”4 Ìè0”5 Ìè1”6 Ìè2”= Ìè9”> Ìè:”? Ìè;”Ì@ Ìè<”ÌA Ìè=”ÌE ÌèÌA”ÌJ ÌèÌF”ÌK ÌèÌG”ÌL ÌèÌH”ÌM ÌèÌI”ÌO ÌèÌK”ÌP ÌèÌL’” Ìé” Ìé”” Ìë
-” Ìë” Ìë” Ìë&’” Ìì” Ììš” Ìí” Ìí” Ìí” Ìí” Ìí”! Ìí”" Ìí”+ Ìí%”, Ìí&”- Ìí'™” Ìî” Ìî” Ìî” Ìî” Ìî” Ìî”) Ìî#”+ Ìî%”, Ìî&Ü ” Ìï” Ìï” Ìï” Ìï”  Ìï”! Ìï”% Ìï”& Ìï ”. Ìï(”0 Ìï*”3 Ìï-”4 Ìï.”5 Ìï/”6 Ìï0”> Ìï8”? Ìï9”Ì@ Ìï:”ÌB Ìï<”ÌE Ìï?”ÌF ÌïÌ@”ÌG ÌïÌAÜ ” Ìğ” Ìğ” Ìğ” Ìğ” Ìğ” Ìğ”# Ìğ”$ Ìğ”+ Ìğ%”- Ìğ'”. Ìğ(”/ Ìğ)”7 Ìğ1”8 Ìğ2”9 Ìğ3”; Ìğ5”> Ìğ8”? Ìğ9”Ì@ Ìğ:š” Ìò” Ìò” Ìò” Ìò” Ìò”# Ìò”' Ìò!”* Ìò$”, Ìò&”- Ìò'‘”	 Ìó”” Ìó” Ìó” Ìó” Ìó”” Ìô” Ìô” Ìô” Ìô‘”	 Ìõ’” Ìö” Ìö’” Ì÷”	 Ì÷‘” Ìø‘” Ìı’” Ìş” Ìş’” Ìÿ”= Ìÿ;’” Í ” Í ’” Í”Ì@ Í>’” Í”% Í#’” Í” Í’” Í” Í’” Í” Í’” Í”
- Í’” Í” Í’” Í	” Í	–” Í
-”	 Í
-”
- Í
-” Í
-” Í
-” Í
-#’” Í” Íœ” Í” Í” Í” Í”  Í”$ Í”% Í”- Í'”1 Í+”9 Í3”; Í5”< Í6’” Í”1 Í+’” Í” Í
-˜” Í” Í” Í” Í”  Í”( Í ”) Í!”* Í"”” Í” Í” Í” Í‘” Í”” Í” Í” Í” Í’” Í”) Í!”” Í” Í” Í” Í‘” Í’” Í” Í’” Í”+ Í%’” Í” Í‘”	 Í’” Í” Í”” Í” Í” Í” Í‘”	 Í’” Í” Í˜” Í”	 Í”
- Í” Í” Í” Í"” Í$”% Í3’” Í ” Í ’” Í!” Í!Ü ” Í"” Í"
-” Í"” Í"” Í"” Í"”$ Í"”( Í""”/ Í")”0 Í"*”4 Í".”6 Í"0”; Í"5”= Í"7”ÌA Í";”ÌH Í"ÌB”ÌI Í"ÌC”ÌM Í"ÌG”ÌO Í"ÌI”ÌT Í"ÌN”ÌV Í"ÌP”ÌX Í"ÌR˜” Í#” Í#” Í#” Í#” Í#”- Í#%”. Í#&”/ Í#'”” Í$” Í$” Í$” Í$‘” Í%’” Í'” Í'˜” Í(” Í(” Í(” Í(” Í(”" Í(”$ Í(”% Í(˜” Í)” Í)” Í)” Í)” Í)”" Í)”$ Í)”% Í)’” Í+” Í+–” Í,” Í,
-” Í,” Í,”# Í,”% Í,˜” Í-” Í-” Í-” Í-” Í-”- Í-%”. Í-&”/ Í-'”” Í.” Í.” Í.” Í.‘” Í/’” Í1” Í1š” Í2” Í2
-” Í2” Í2” Í2”% Í2”& Í2 ”- Í2'”. Í2(”0 Í2*š” Í3” Í3” Í3” Í3” Í3”/ Í3'”6 Í3.”8 Í30”9 Í31”: Í32”” Í4” Í4” Í4” Í4‘” Í5’” Í7” Í7œ” Í8” Í8” Í8” Í8” Í8”# Í8”$ Í8”, Í8&”0 Í8*”7 Í81”9 Í83”: Í84œ” Í9” Í9” Í9” Í9” Í9”# Í9”$ Í9”, Í9&”0 Í9*”7 Í91”9 Í93”: Í94œ” Í;” Í;” Í;” Í;” Í;”" Í;”) Í;#”0 Í;*”7 Í;1”9 Í;3”: Í;4”; Í;5’” Í=” Í=›” Í>” Í>
-” Í>” Í>” Í>” Í>”& Í> ”' Í>!”. Í>(”/ Í>)”1 Í>+š” Í?” Í?” Í?” Í?” Í?”. Í?&”5 Í?-”7 Í?/”8 Í?0”9 Í?1”” Í@” Í@” Í@” Í@‘” ÍA’” ÍC” ÍCš” ÍD” ÍD
-” ÍD” ÍD” ÍD”% ÍD”& ÍD ”- ÍD'”. ÍD(”0 ÍD*š” ÍE” ÍE” ÍE” ÍE” ÍE”. ÍE&”5 ÍE-”7 ÍE/”8 ÍE0”9 ÍE1”” ÍF” ÍF” ÍF” ÍF‘” ÍG’” ÍI” ÍI’” ÍJ” ÍJ
-š” ÍK” ÍK” ÍK”! ÍK”" ÍK”) ÍK!”+ ÍK#”2 ÍK*”3 ÍK+”4 ÍK,œ” ÍL” ÍL” ÍL” ÍL” ÍL”& ÍL”- ÍL%”4 ÍL,”; ÍL3”= ÍL5”> ÍL6”? ÍL7”” ÍM” ÍM” ÍM” ÍM‘” ÍN”” ÍN” ÍN” ÍN” ÍN” ÍO” ÍO” ÍO” ÍO” ÍO”( ÍO ”- ÍO%”. ÍO&”5 ÍO-”9 ÍO1”> ÍO6”Ì@ ÍO8”ÌA ÍO9”ÌB ÍO:”” ÍP” ÍP” ÍP” ÍP‘” ÍQ‘”	 ÍS”” ÍS” ÍS” ÍS” ÍSš” ÍT” ÍT” ÍT” ÍT” ÍT”) ÍT#”. ÍT(”0 ÍT*”1 ÍT+”2 ÍT,”” ÍU” ÍU” ÍU” ÍU‘”	 ÍV’” ÍW” ÍW‘” ÍY‘” Í]”” Í^
-” Í^” Í^” Í^*œ” Í_” Í_” Í_	” Í_” Í_”! Í_”" Í_”& Í_"”( Í_$”- Í_)”/ Í_+”1 Í_-”” Í`” Í`” Í`” Í`‘”	 Ía’” Íc” Íc–” Íd” Íd
-” Íd” Íd”+ Íd'”, Íd(™” Íe” Íe” Íe” Íe” Íe” Íe”& Íe"”' Íe#”) Íe%”” Íf” Íf” Íf” Íf‘”	 Íg’” Íi” Íi˜” Íj” Íj” Íj” Íj” Íj” Íj”! Íj”# Íj”” Ík” Ík” Ík” Ík‘”	 Íl’” Ín” ÍnÜ ” Ío” Ío
-” Ío” Ío” Ío”$ Ío ”& Ío"”+ Ío'”- Ío)”2 Ío.”4 Ío0”9 Ío5”; Ío7”ÌA Ío=”ÌC Ío?”ÌI ÍoÌE”ÌK ÍoÌG”ÌQ ÍoÌM”ÌS ÍoÌO”ÌY ÍoÌU” Íp” Íp” Íp” Íp” Íp”" Íp”$ Íp”* Íp$”, Íp&”2 Íp,”4 Íp.”: Íp4”< Íp6”ÌB Íp<Ü ” Íq” Íq” Íq” Íq” Íq”" Íq”$ Íq”* Íq$”, Íq&”2 Íq,”4 Íq.”: Íq4”< Íq6”ÌB Íq<”ÌC Íq=”ÌD Íq>Ü ” Ír” Ír
-” Ír” Ír”" Ír”# Ír”( Ír$”) Ír%”, Ír(”- Ír)”. Ír*”/ Ír+”0 Ír,”1 Ír-”< Ír8”> Ír:”? Ír;™” Ís” Ís” Ís” Ís”" Ís”# Ís”, Ís(”- Ís)”/ Ís+”” Ít” Ít” Ít” Ít‘”	 Íu”” Íw” Íw” Íw” Íw’” Íx” Íx˜” Íz”	 Íz”
- Íz” Íz” Íz” Íz#” Íz%”& Íz4’” Í{” Í{” Í|” Í|” Í|” Í|”! Í|”" Í|”- Í|'”/ Í|)”2 Í|,”5 Í|/”8 Í|2”Ì@ Í|:”ÌA Í|;›” Í}” Í}
-” Í}” Í}” Í}” Í}”& Í} ”' Í}!”/ Í})”0 Í}*”2 Í},”” Í~” Í~” Í~” Í~‘” ÍÜ ” Í” Í” Í” Í” Í”! Í”" Í”& Í ”' Í!”/ Í)”1 Í+”3 Í-”4 Í.”< Í6”= Í7”ÌG ÍÌA”ÌJ ÍÌD”ÌL ÍÌF”ÌM ÍÌG”ÌU ÍÌO”ÌV ÍÌP”Ì[ ÍÌU”Ì\ ÍÌV”Ì] ÍÌW” Í‚” Í‚” Í‚”  Í‚”$ Í‚”/ Í‚)”0 Í‚*”7 Í‚1”8 Í‚2”> Í‚8”ÌA Í‚;”ÌB Í‚<”ÌC Í‚=”ÌD Í‚>š” Íƒ” Íƒ” Íƒ” Íƒ”! Íƒ”) Íƒ#”* Íƒ$”5 Íƒ/”6 Íƒ0”7 Íƒ1Ü ” Í…” Í…” Í…” Í…” Í…” Í…” Í…” Í…”  Í…”' Í…!”( Í…"”. Í…(”0 Í…*”1 Í…+”3 Í…-”5 Í…/Ü ” Í†” Í†” Í†”" Í†”# Í†”$ Í†”' Í†”( Í† ”* Í†"”1 Í†)”2 Í†*”< Í†4”= Í†5”> Í†6”? Í†7”ÌA Í†9”ÌE Í†=”ÌF Í†>”ÌG Í†?‘” Í‡” Í‰” Í‰” Í‰” Í‰” Í‰” Í‰” Í‰”  Í‰”" Í‰”$ Í‰”/ Í‰)”0 Í‰*”1 Í‰+™” ÍŠ” ÍŠ” ÍŠ” ÍŠ” ÍŠ” ÍŠ” ÍŠ”  ÍŠ”! ÍŠš” ÍŒ” ÍŒ” ÍŒ” ÍŒ” ÍŒ”) ÍŒ#”1 ÍŒ+”3 ÍŒ-”4 ÍŒ.”5 ÍŒ/”” Í” Í” Í” Í‘”	 Í”” Í” Í” Í” ÍŸ” Í” Í” Í” Í” Í”/ Í)”3 Í-”4 Í.”= Í7”> Í8”ÌC Í=”ÌD Í>”ÌF ÍÌ@”ÌG ÍÌA”ÌH ÍÌB”” Í” Í” Í” Í‘”	 Í‘’” Í’” Í’‘” Í•ÔrH–§version¤file§sources®sourcesContent¥names¨mappingsÀ‘À‘ÀÜT‘”    ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”  	 ‘”  
- ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”    ‘”  ! ‘”  " ‘”  # ‘”  $ ‘”  % ‘”  & ‘”  ' ‘”  ( ‘”  ) ‘”  * ‘”  + ‘”  , ‘”  - ‘”  . ‘”  / ‘”  0 ‘”  1 ‘”  2 ‘”  3 ‘”  4 ‘”  5 ‘”  6 ‘”  7 ‘”  8 ‘”  9 ‘”  : ‘”  ; ‘”  < ‘”  = ‘”  > ‘”  ? ‘”  Ì@ ‘”  ÌA ‘”  ÌB ‘”  ÌC ‘”  ÌD ‘”  ÌE ‘”  ÌF ‘”  ÌG ‘”  ÌH ‘”  ÌI ‘”  ÌJ ‘”  ÌK ‘”  ÌL ‘”  ÌM ‘”  ÌN ‘”  ÌO ‘”  ÌP ‘”  ÌQ ‘”  ÌR ‘”  ÌS ‘”  ÌT ‘”  ÌU ‘”  ÌV ‘”  ÌW ‘”  ÌX ‘”  ÌY ‘”  ÌZ ‘”  Ì[ ‘”  Ì\ ‘”  Ì] ‘”  Ì^ ‘”  Ì_ ‘”  Ì` ‘”  Ìa ‘”  Ìb ‘”  Ìc ‘”  Ìd ‘”  Ìe ‘”  Ìf ‘”  Ìg ‘”  Ìh ‘”  Ìi ‘”  Ìj ‘”  Ìk ‘”  Ìl ‘”  Ìm ‘”  Ìn ‘”  Ìo ‘”  Ìp ‘”  Ìq ‘”  Ìr ‘”  Ìs ‘”  Ìt ‘”  Ìu ‘”  Ìv ‘”  Ìw ‘”  Ìx ‘”  Ìy ‘”  Ìz ‘”  Ì{ ‘”  Ì| ‘”  Ì} ‘”  Ì~ ‘”  Ì ‘”  Ì€ ‘”  Ì ‘”  Ì‚ ‘”  Ìƒ ‘”  Ì„ ‘”  Ì… ‘”  Ì† ‘”  Ì‡ ‘”  Ìˆ ‘”  Ì‰ ‘”  ÌŠ ‘”  Ì‹ ‘”  ÌŒ ‘”  Ì ‘”  Ì ‘”  Ì ‘”  Ì ‘”  Ì‘ ‘”  Ì’ ‘”  Ì“ ‘”  Ì” ‘”  Ì• ‘”  Ì– ‘”  Ì— ‘”  Ì˜ ‘”  Ì™ ‘”  Ìš ‘”  Ì› ‘”  Ìœ ‘”  Ì ‘”  Ì ‘”  ÌŸ ‘”  Ì  ‘”  Ì¡ ‘”  Ì¢ ‘”  Ì£ ‘”  Ì¤ ‘”  Ì¥ ‘”  Ì¦ ‘”  Ì§ ‘”  Ì¨ ‘”  Ì© ‘”  Ìª ‘”  Ì« ‘”  Ì¬ ‘”  Ì­ ‘”  Ì® ‘”  Ì¯ ‘”  Ì° ‘”  Ì± ‘”  Ì² ‘”  Ì³ ‘”  Ì´ ‘”  Ìµ ‘”  Ì¶ ‘”  Ì· ‘”  Ì¸ ‘”  Ì¹ ‘”  Ìº ‘”  Ì» ‘”  Ì¼ ‘”  Ì½ ‘”  Ì¾ ‘”  Ì¿ ‘”  ÌÀ ‘”  ÌÁ ‘”  ÌÂ ‘”  ÌÃ ‘”  ÌÄ ‘”  ÌÅ ‘”  ÌÆ ‘”  ÌÇ ‘”  ÌÈ ‘”  ÌÉ ‘”  ÌÊ ‘”  ÌË ‘”  ÌÌ ‘”  ÌÍ ‘”  ÌÎ ‘”  ÌÏ ‘”  ÌĞ ‘”  ÌÑ ‘”  ÌÒ ‘”  ÌÓ ‘”  ÌÔ ‘”  ÌÕ ‘”  ÌÖ ‘”  Ì× ‘”  ÌØ ‘”  ÌÙ ‘”  ÌÚ ‘”  ÌÛ ‘”  ÌÜ ‘”  Ìİ ‘”  ÌŞ ‘”  Ìß ‘”  Ìà ‘”  Ìá ‘”  Ìâ ‘”  Ìã ‘”  Ìä ‘”  Ìå ‘”  Ìæ ‘”  Ìç ‘”  Ìè ‘”  Ìé ‘”  Ìê ‘”  Ìë ‘”  Ìì ‘”  Ìí ‘”  Ìî ‘”  Ìï ‘”  Ìğ ‘”  Ìñ ‘”  Ìò ‘”  Ìó ‘”  Ìô ‘”  Ìõ ‘”  Ìö ‘”  Ì÷ ‘”  Ìø ‘”  Ìù ‘”  Ìú ‘”  Ìû ‘”  Ìü ‘”  Ìı ‘”  Ìş ‘”  Ìÿ ‘”  Í  ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í	 ‘”  Í
- ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í  ‘”  Í! ‘”  Í" ‘”  Í# ‘”  Í$ ‘”  Í% ‘”  Í& ‘”  Í' ‘”  Í( ‘”  Í) ‘”  Í* ‘”  Í+ ‘”  Í, ‘”  Í- ‘”  Í. ‘”  Í/ ‘”  Í0 ‘”  Í1 ‘”  Í2 ‘”  Í3 ‘”  Í4 ‘”  Í5 ‘”  Í6 ‘”  Í7 ‘”  Í8 ‘”  Í9 ‘”  Í: ‘”  Í; ‘”  Í< ‘”  Í= ‘”  Í> ‘”  Í? ‘”  Í@ ‘”  ÍA ‘”  ÍB ‘”  ÍC ‘”  ÍD ‘”  ÍE ‘”  ÍF ‘”  ÍG ‘”  ÍH ‘”  ÍI ‘”  ÍJ ‘”  ÍK ‘”  ÍL ‘”  ÍM ‘”  ÍN ‘”  ÍO ‘”  ÍP ‘”  ÍQ ‘”  ÍR ‘”  ÍS ÔrI’§missing¦pluginÃ¦genAbcÂÔ  ÔrJ”²dynamicImportCache¹exportAllDeclarationCache»exportNamedDeclarationCache«importCache‘ÔrK–¤type¥start£end«declarationªspecifiers¦source¶ExportNamedDeclarationÌ†Í-6ÔrL–¤type¥start£end¢idªsuperClass¤body°ClassDeclarationÌÍ-6ÔrM”¤type¥start£end¤nameªIdentifierÌ“Ì«FileManagerÀÔrN”¤type¥start£end¤body©ClassBodyÌŸÍ-6›ÔrO˜¤type¥start£end¦static¨computed£key¤kind¥value°MethodDefinitionÌ¦Í4ÂÂMªIdentifierÌ¦Ì±«constructor«constructorÔrP™¤type¥start£end¢idªexpression©generator¥async¦params¤body²FunctionExpressionÌ±Í4ÀÂÂÂ‘MªIdentifierÌ²Ì¹§contextN®BlockStatementÌ»Í4’ÔrQ”¤type¥start£endªexpression³ExpressionStatementÌÆÌİÔrR–¤type¥start£end¨operator¤left¥right´AssignmentExpressionÌÆÌÜ¡=ÔrS—¤type¥start£end¦object¨property¨computed¨optional°MemberExpressionÌÆÌÒÔrT“¤type¥start£end®ThisExpressionÌÆÌÊMªIdentifierÌËÌÒ§contextÂÂMªIdentifierÌÕÌÜ§contextQ³ExpressionStatementÍ
-Í-R´AssignmentExpressionÍ
-Í,¡=S°MemberExpressionÍ
-ÍT®ThisExpressionÍ
-ÍMªIdentifierÍÍ¨filesDirÂÂÔrU–¤type¥start£end¦callee©arguments¨optional®CallExpressionÍÍ,S°MemberExpressionÍÍ*T®ThisExpressionÍÍMªIdentifierÍÍ*«getFilesDirÂÂÂO°MethodDefinitionÍXÍÀÂÂMªIdentifierÍXÍc«getFilesDir¦methodP²FunctionExpressionÍcÍÀÀÂÂÂN®BlockStatementÍfÍÀ‘ÔrV–¤type¥start£end¥block§handler©finalizer¬TryStatementÍœÍ¹N®BlockStatementÍ Í7’ÔrW•¤type¥start£end¬declarations¤kind³VariableDeclarationÍ×Íı‘ÔrX•¤type¥start£end¢id¤init²VariableDeclaratorÍİÍüMªIdentifierÍİÍí°uiAbilityContextS°MemberExpressionÍğÍüT®ThisExpressionÍğÍôMªIdentifierÍõÍü§contextÂÂ¥constÔrY”¤type¥start£end¨argument¯ReturnStatementÍÍ,S°MemberExpressionÍÍ+MªIdentifierÍÍ"°uiAbilityContextMªIdentifierÍ#Í+¨filesDirÂÂÔrZ•¤type¥start£end¥param¤body«CatchClauseÍAÍ¹MªIdentifierÍHÍM¥errorN®BlockStatementÍOÍ¹‘Y¯ReturnStatementÍzÍ¢Ôr[–¤type¥start£end¤left¨operator¥right°BinaryExpressionÍÍ¡S°MemberExpressionÍÍ–S°MemberExpressionÍÍT®ThisExpressionÍÍ…MªIdentifierÍ†Í§contextÂÂMªIdentifierÍÍ–¨cacheDirÂÂ¡+Ôr\•¤type¥start£end¥value£raw§LiteralÍ™Í¡¦/files¨'/files'ÀO°MethodDefinitionÍzÍ
-xÂÂMªIdentifierÍ€Í“³searchFilesWithInfo¦methodP²FunctionExpressionÍ“Í
-xÀÂÂÃ‘MªIdentifierÍ”Í›§keywordN®BlockStatementÍÍ
-x‘V¬TryStatementÍ¨Í
-qN®BlockStatementÍ¬Í	ı”W³VariableDeclarationÍ»Íí‘X²VariableDeclaratorÍÁÍìMªIdentifierÍÁÍÉ¨allFilesY¯AwaitExpressionÍÌÍìU®CallExpressionÍÒÍìS°MemberExpressionÍÒÍêT®ThisExpressionÍÒÍÖMªIdentifierÍ×Íê³getAllFilesWithInfoÂÂÂ¥constÔr]–¤type¥start£end¤testªconsequent©alternate«IfStatementÍûÍ	T[±LogicalExpressionÍÿÍ	 Ôr^–¤type¥start£end¨operator¦prefix¨argument¯UnaryExpressionÍÿÍ	¡!ÃMªIdentifierÍ	 Í	§keyword¢||[°BinaryExpressionÍ	Í	 U®CallExpressionÍ	Í	S°MemberExpressionÍ	Í	MªIdentifierÍ	Í	§keywordMªIdentifierÍ	Í	¤trimÂÂÂ£===\§LiteralÍ	Í	  ¢''N®BlockStatementÍ	"Í	T‘Y¯ReturnStatementÍ	5Í	EMªIdentifierÍ	<Í	D¨allFilesÀW³VariableDeclarationÍ	bÍ	‹‘X²VariableDeclaratorÍ	hÍ	ŠMªIdentifierÍ	hÍ	rªsearchTermU®CallExpressionÍ	uÍ	ŠS°MemberExpressionÍ	uÍ	ˆMªIdentifierÍ	uÍ	|§keywordMªIdentifierÍ	}Í	ˆ«toLowerCaseÂÂÂ¥constY¯ReturnStatementÍ	™Í	òU®CallExpressionÍ	 Í	ñS°MemberExpressionÍ	 Í	¯MªIdentifierÍ	 Í	¨¨allFilesMªIdentifierÍ	©Í	¯¦filterÂÂ‘P·ArrowFunctionExpressionÍ	°Í	ğÀÃÂÂ‘MªIdentifierÍ	°Í	¸¨fileInfoU®CallExpressionÍ	¼Í	ğS°MemberExpressionÍ	¼Í	äU®CallExpressionÍ	¼Í	ÛS°MemberExpressionÍ	¼Í	ÙS°MemberExpressionÍ	¼Í	ÍMªIdentifierÍ	¼Í	Ä¨fileInfoMªIdentifierÍ	ÅÍ	Í¨filenameÂÂMªIdentifierÍ	ÎÍ	Ù«toLowerCaseÂÂÂMªIdentifierÍ	ÜÍ	ä¨includesÂÂ‘MªIdentifierÍ	åÍ	ïªsearchTermÂÂZ«CatchClauseÍ
-Í
-qMªIdentifierÍ
-Í
-¥errorN®BlockStatementÍ
-Í
-q’Q³ExpressionStatementÍ
-$Í
-NU®CallExpressionÍ
-$Í
-MS°MemberExpressionÍ
-$Í
-1MªIdentifierÍ
-$Í
-+§consoleMªIdentifierÍ
-,Í
-1¥errorÂÂ‘Ôr_•¤type¥start£end«expressions¦quasis¯TemplateLiteralÍ
-2Í
-L‘S°MemberExpressionÍ
-=Í
-JMªIdentifierÍ
-=Í
-B¥errorMªIdentifierÍ
-CÍ
-J§messageÂÂ’Ôr`•¤type¥start£end¥value¤tail¯TemplateElementÍ
-3Í
-;Ôra’£raw¦cooked´æœç´¢æ–‡ä»¶å¤±è´¥: ´æœç´¢æ–‡ä»¶å¤±è´¥: Â`¯TemplateElementÍ
-KÍ
-Ka  ÃÂY¯ReturnStatementÍ
-\Í
-fÔrb”¤type¥start£end¨elements¯ArrayExpressionÍ
-cÍ
-eÀO°MethodDefinitionÍ
-¤ÍşÂÂMªIdentifierÍ
-ªÍ
-µ«getFileInfo¦methodP²FunctionExpressionÍ
-µÍşÀÂÂÃ‘MªIdentifierÍ
-¶Í
-¾¨filenameN®BlockStatementÍ
-ÀÍş‘V¬TryStatementÍ
-ËÍ÷N®BlockStatementÍ
-ÏÍ—W³VariableDeclarationÍ
-ŞÍ‘X²VariableDeclaratorÍ
-äÍMªIdentifierÍ
-äÍ
-ì¨filePath[°BinaryExpressionÍ
-ïÍ[°BinaryExpressionÍ
-ïÍS°MemberExpressionÍ
-ïÍ
-üT®ThisExpressionÍ
-ïÍ
-óMªIdentifierÍ
-ôÍ
-ü¨filesDirÂÂ¡+\§LiteralÍ
-ÿÍ¡/£'/'¡+MªIdentifierÍÍ¨filename¥constV¬TryStatementÍ5ÍñN®BlockStatementÍ9Íw‘Q³ExpressionStatementÍLÍhU®CallExpressionÍLÍgS°MemberExpressionÍLÍ]MªIdentifierÍLÍR¦fileIoMªIdentifierÍSÍ]ªaccessSyncÂÂ‘MªIdentifierÍ^Íf¨filePathÂZ«CatchClauseÍ…ÍñMªIdentifierÍŒÍ¡eN®BlockStatementÍÍñ’Q³ExpressionStatementÍ¢ÍÄU®CallExpressionÍ¢ÍÃS°MemberExpressionÍ¢Í­MªIdentifierÍ¢Í©§consoleMªIdentifierÍªÍ­£logÂÂ‘_¯TemplateLiteralÍ®ÍÂ‘MªIdentifierÍ¸ÍÀ¨filename’`¯TemplateElementÍ¯Í¶a±æ–‡ä»¶ä¸å­˜åœ¨: ±æ–‡ä»¶ä¸å­˜åœ¨: Â`¯TemplateElementÍÁÍÁa  ÃÂY¯ReturnStatementÍÖÍâ\§LiteralÍİÍáÀ¤nullÀW³VariableDeclarationÍÍ?‘X²VariableDeclaratorÍÍ>MªIdentifierÍÍ"¤statU®CallExpressionÍ%Í>S°MemberExpressionÍ%Í4MªIdentifierÍ%Í+¦fileIoMªIdentifierÍ,Í4¨statSyncÂÂ‘MªIdentifierÍ5Í=¨filePathÂ¥constW³VariableDeclarationÍeÍ™‘X²VariableDeclaratorÍkÍ˜MªIdentifierÍkÍw¬sizeReadableU®CallExpressionÍzÍ˜S°MemberExpressionÍzÍT®ThisExpressionÍzÍ~MªIdentifierÍÍ®formatFileSizeÂÂ‘S°MemberExpressionÍÍ—MªIdentifierÍÍ’¤statMªIdentifierÍ“Í—¤sizeÂÂÂ¥constW³VariableDeclarationÍ½Íğ‘X²VariableDeclaratorÍÃÍïMªIdentifierÍÃÍÑ®mtimeFormattedU®CallExpressionÍÔÍïS°MemberExpressionÍÔÍãT®ThisExpressionÍÔÍØMªIdentifierÍÙÍãªformatDateÂÂ‘S°MemberExpressionÍäÍîMªIdentifierÍäÍè¤statMªIdentifierÍéÍî¥mtimeÂÂÂ¥constW³VariableDeclarationÍşÍ1‘X²VariableDeclaratorÍÍ0MªIdentifierÍÍ®ctimeFormattedU®CallExpressionÍÍ0S°MemberExpressionÍÍ$T®ThisExpressionÍÍMªIdentifierÍÍ$ªformatDateÂÂ‘S°MemberExpressionÍ%Í/MªIdentifierÍ%Í)¤statMªIdentifierÍ*Í/¥ctimeÂÂÂ¥constY¯ReturnStatementÍ?ÍtÔrc”¤type¥start£endªproperties°ObjectExpressionÍFÍs—Ôrd™¤type¥start£end¦method©shorthand¨computed£key¥value¤kind¨PropertyÍYÍkÂÂÂMªIdentifierÍYÍa¨filenameMªIdentifierÍcÍk¨filename¤initd¨PropertyÍ~ÍÂÂÂMªIdentifierÍ~Í‚¤sizeS°MemberExpressionÍ„ÍMªIdentifierÍ„Íˆ¤statMªIdentifierÍ‰Í¤sizeÂÂ¤initd¨PropertyÍ ÍºÂÂÂMªIdentifierÍ Í¬¬sizeReadableMªIdentifierÍ®Íº¬sizeReadable¤initd¨PropertyÍÍÍŞÂÂÂMªIdentifierÍÍÍÒ¥mtimeS°MemberExpressionÍÔÍŞMªIdentifierÍÔÍØ¤statMªIdentifierÍÙÍŞ¥mtimeÂÂ¤initd¨PropertyÍñÍÂÂÂMªIdentifierÍñÍö¥ctimeS°MemberExpressionÍøÍMªIdentifierÍøÍü¤statMªIdentifierÍıÍ¥ctimeÂÂ¤initd¨PropertyÍÍ3ÂÂÂMªIdentifierÍÍ#®mtimeFormattedMªIdentifierÍ%Í3®mtimeFormatted¤initd¨PropertyÍFÍdÂÂÂMªIdentifierÍFÍT®ctimeFormattedMªIdentifierÍVÍd®ctimeFormatted¤initZ«CatchClauseÍ‰Í÷MªIdentifierÍÍ•¥errorN®BlockStatementÍ—Í÷’Q³ExpressionStatementÍ¦ÍÒU®CallExpressionÍ¦ÍÑS°MemberExpressionÍ¦Í³MªIdentifierÍ¦Í­§consoleMªIdentifierÍ®Í³¥errorÂÂ‘_¯TemplateLiteralÍ´ÍĞ‘S°MemberExpressionÍÁÍÎMªIdentifierÍÁÍÆ¥errorMªIdentifierÍÇÍÎ§messageÂÂ’`¯TemplateElementÍµÍ¿aºè·å–æ–‡ä»¶ä¿¡æ¯å¤±è´¥: ºè·å–æ–‡ä»¶ä¿¡æ¯å¤±è´¥: Â`¯TemplateElementÍÏÍÏa  ÃÂY¯ReturnStatementÍàÍì\§LiteralÍçÍëÀ¤nullÀO°MethodDefinitionÍ&ÍQÂÂMªIdentifierÍ,Í?³getAllFilesWithInfo¦methodP²FunctionExpressionÍ?ÍQÀÂÂÃN®BlockStatementÍBÍQ‘V¬TryStatementÍMÍJN®BlockStatementÍQÍÈ˜W³VariableDeclarationÍ`Í„‘X²VariableDeclaratorÍfÍƒMªIdentifierÍfÍn¨filesDirU®CallExpressionÍqÍƒS°MemberExpressionÍqÍT®ThisExpressionÍqÍuMªIdentifierÍvÍ«getFilesDirÂÂÂ¥constQ³ExpressionStatementÍ’ÍÉU®CallExpressionÍ’ÍÈS°MemberExpressionÍ’ÍMªIdentifierÍ’Í™§consoleMªIdentifierÍšÍ£logÂÂ‘_¯TemplateLiteralÍÍÇ‘MªIdentifierÍ½ÍÅ¨filesDir’`¯TemplateElementÍŸÍ»aÙ$[getAllFilesWithInfo] è¯»å–ç›®å½•: Ù$[getAllFilesWithInfo] è¯»å–ç›®å½•: Â`¯TemplateElementÍÆÍÆa  ÃÂW³VariableDeclarationÍÍ8‘X²VariableDeclaratorÍÍ7MªIdentifierÍÍ¥filesU®CallExpressionÍÍ7S°MemberExpressionÍÍ-MªIdentifierÍÍ ¦fileIoMªIdentifierÍ!Í-¬listFileSyncÂÂ‘MªIdentifierÍ.Í6¨filesDirÂ¥constQ³ExpressionStatementÍFÍƒU®CallExpressionÍFÍ‚S°MemberExpressionÍFÍQMªIdentifierÍFÍM§consoleMªIdentifierÍNÍQ£logÂÂ‘_¯TemplateLiteralÍRÍ‘S°MemberExpressionÍqÍ}MªIdentifierÍqÍv¥filesMªIdentifierÍwÍ}¦lengthÂÂ’`¯TemplateElementÍSÍoaÙ$[getAllFilesWithInfo] æ‰¾åˆ°æ–‡ä»¶: Ù$[getAllFilesWithInfo] æ‰¾åˆ°æ–‡ä»¶: Â`¯TemplateElementÍ~Í€a¤ ä¸ª¤ ä¸ªÃÂW³VariableDeclarationÍ‘Í¦‘X²VariableDeclaratorÍ—Í¥MªIdentifierÍ—Í ©fileInfosb¯ArrayExpressionÍ£Í¥¥constÔre—¤type¥start£end¥await¤left¥right¤body®ForOfStatementÍ´ÍMÂW³VariableDeclarationÍ¹ÍÃ‘X²VariableDeclaratorÍ¿ÍÃMªIdentifierÍ¿ÍÃ¤fileÀ¥constMªIdentifierÍÇÍÌ¥filesN®BlockStatementÍÎÍM‘V¬TryStatementÍáÍ>N®BlockStatementÍåÍ—W³VariableDeclarationÍÍB‘X²VariableDeclaratorÍ!ÍAMªIdentifierÍ!Í)¨filePath_¯TemplateLiteralÍ,ÍA’MªIdentifierÍ/Í7¨filesDirMªIdentifierÍ;Í?¤file“`¯TemplateElementÍ-Í-a  Â`¯TemplateElementÍ8Í9a¡/¡/Â`¯TemplateElementÍ@Í@a  Ã¥constW³VariableDeclarationÍwÍ‘X²VariableDeclaratorÍ}ÍMªIdentifierÍ}Í¤statU®CallExpressionÍ„ÍS°MemberExpressionÍ„Í“MªIdentifierÍ„ÍŠ¦fileIoMªIdentifierÍ‹Í“¨statSyncÂÂ‘MªIdentifierÍ”Íœ¨filePathÂ¥const]«IfStatementÍ×ÍwU®CallExpressionÍÛÍíS°MemberExpressionÍÛÍëMªIdentifierÍÛÍß¤statMªIdentifierÍàÍë«isDirectoryÂÂÂN®BlockStatementÍïÍw’Q³ExpressionStatementÍ
-Í=U®CallExpressionÍ
-Í<S°MemberExpressionÍ
-ÍMªIdentifierÍ
-Í§consoleMªIdentifierÍÍ£logÂÂ‘_¯TemplateLiteralÍÍ;‘MªIdentifierÍ5Í9¤file’`¯TemplateElementÍÍ3aÙ$[getAllFilesWithInfo] è·³è¿‡ç›®å½•: Ù$[getAllFilesWithInfo] è·³è¿‡ç›®å½•: Â`¯TemplateElementÍ:Í:a  ÃÂÔrf”¤type¥start£end¥label±ContinueStatementÍWÍ`ÀÀW³VariableDeclarationÍ®Íâ‘X²VariableDeclaratorÍ´ÍáMªIdentifierÍ´ÍÀ¬sizeReadableU®CallExpressionÍÃÍáS°MemberExpressionÍÃÍÖT®ThisExpressionÍÃÍÇMªIdentifierÍÈÍÖ®formatFileSizeÂÂ‘S°MemberExpressionÍ×ÍàMªIdentifierÍ×ÍÛ¤statMªIdentifierÍÜÍà¤sizeÂÂÂ¥constW³VariableDeclarationÍøÍ+‘X²VariableDeclaratorÍşÍ*MªIdentifierÍşÍ®mtimeFormattedU®CallExpressionÍÍ*S°MemberExpressionÍÍT®ThisExpressionÍÍMªIdentifierÍÍªformatDateÂÂ‘S°MemberExpressionÍÍ)MªIdentifierÍÍ#¤statMªIdentifierÍ$Í)¥mtimeÂÂÂ¥constW³VariableDeclarationÍAÍt‘X²VariableDeclaratorÍGÍsMªIdentifierÍGÍU®ctimeFormattedU®CallExpressionÍXÍsS°MemberExpressionÍXÍgT®ThisExpressionÍXÍ\MªIdentifierÍ]ÍgªformatDateÂÂ‘S°MemberExpressionÍhÍrMªIdentifierÍhÍl¤statMªIdentifierÍmÍr¥ctimeÂÂÂ¥constQ³ExpressionStatementÍŠÍU®CallExpressionÍŠÍS°MemberExpressionÍŠÍ˜MªIdentifierÍŠÍ“©fileInfosMªIdentifierÍ”Í˜¤pushÂÂ‘c°ObjectExpressionÍ™Í—d¨PropertyÍ´ÍÂÂÂÂMªIdentifierÍ´Í¼¨filenameMªIdentifierÍ¾ÍÂ¤file¤initd¨PropertyÍİÍìÂÂÂMªIdentifierÍİÍá¤sizeS°MemberExpressionÍãÍìMªIdentifierÍãÍç¤statMªIdentifierÍèÍì¤sizeÂÂ¤initd¨PropertyÍÍ!ÂÂÂMªIdentifierÍÍ¬sizeReadableMªIdentifierÍÍ!¬sizeReadable¤initd¨PropertyÍ<ÍMÂÂÂMªIdentifierÍ<ÍA¥mtimeS°MemberExpressionÍCÍMMªIdentifierÍCÍG¤statMªIdentifierÍHÍM¥mtimeÂÂ¤initd¨PropertyÍhÍyÂÂÂMªIdentifierÍhÍm¥ctimeS°MemberExpressionÍoÍyMªIdentifierÍoÍs¤statMªIdentifierÍtÍy¥ctimeÂÂ¤initd¨PropertyÍ”Í²ÂÂÂMªIdentifierÍ”Í¢®mtimeFormattedMªIdentifierÍ¤Í²®mtimeFormatted¤initd¨PropertyÍÍÍëÂÂÂMªIdentifierÍÍÍÛ®ctimeFormattedMªIdentifierÍİÍë®ctimeFormatted¤initÂZ«CatchClauseÍ)Í>MªIdentifierÍ0Í9©fileErrorN®BlockStatementÍ;Í>’Q³ExpressionStatementÍRÍ”U®CallExpressionÍRÍ“S°MemberExpressionÍRÍ^MªIdentifierÍRÍY§consoleMªIdentifierÍZÍ^¤warnÂÂ’_¯TemplateLiteralÍ_Í‡‘MªIdentifierÍ}Í¤file’`¯TemplateElementÍ`Í{aÙ#[getAllFilesWithInfo] å¤„ç†æ–‡ä»¶ Ù#[getAllFilesWithInfo] å¤„ç†æ–‡ä»¶ Â`¯TemplateElementÍ‚Í†a¨ å¤±è´¥:¨ å¤±è´¥:ÃMªIdentifierÍ‰Í’©fileErrorÂQ³ExpressionStatementÍÔÍ+U®CallExpressionÍÔÍ*S°MemberExpressionÍÔÍâMªIdentifierÍÔÍİ©fileInfosMªIdentifierÍŞÍâ¤pushÂÂ‘c°ObjectExpressionÍãÍ)—d¨PropertyÍşÍÂÂÂMªIdentifierÍşÍ¨filenameMªIdentifierÍÍ¤file¤initd¨PropertyÍ'Í.ÂÂÂMªIdentifierÍ'Í+¤size\§LiteralÍ-Í. ¡0¤initd¨PropertyÍIÍ\ÂÂÂMªIdentifierÍIÍU¬sizeReadable\§LiteralÍWÍ\£0 B¥'0 B'¤initd¨PropertyÍwÍˆÂÂÂMªIdentifierÍwÍ|¥mtimeU®CallExpressionÍ~ÍˆS°MemberExpressionÍ~Í†MªIdentifierÍ~Í‚¤DateMªIdentifierÍƒÍ†£nowÂÂÂ¤initd¨PropertyÍ£Í´ÂÂÂMªIdentifierÍ£Í¨¥ctimeU®CallExpressionÍªÍ´S°MemberExpressionÍªÍ²MªIdentifierÍªÍ®¤DateMªIdentifierÍ¯Í²£nowÂÂÂ¤initd¨PropertyÍÏÍãÂÂÂMªIdentifierÍÏÍİ®mtimeFormatted\§LiteralÍßÍã¦æœªçŸ¥¨'æœªçŸ¥'¤initd¨PropertyÍşÍÂÂÂMªIdentifierÍşÍ®ctimeFormatted\§LiteralÍÍ¦æœªçŸ¥¨'æœªçŸ¥'¤initÂÀQ³ExpressionStatementÍ[ÍU®CallExpressionÍ[ÍS°MemberExpressionÍ[ÍfMªIdentifierÍ[Íb§consoleMªIdentifierÍcÍf£logÂÂ‘_¯TemplateLiteralÍgÍœ‘S°MemberExpressionÍˆÍ˜MªIdentifierÍˆÍ‘©fileInfosMªIdentifierÍ’Í˜¦lengthÂÂ’`¯TemplateElementÍhÍ†aÙ*[getAllFilesWithInfo] è¿”å›æ–‡ä»¶ä¿¡æ¯: Ù*[getAllFilesWithInfo] è¿”å›æ–‡ä»¶ä¿¡æ¯: Â`¯TemplateElementÍ™Í›a¤ ä¸ª¤ ä¸ªÃÂY¯ReturnStatementÍ¬Í½MªIdentifierÍ³Í¼©fileInfosZ«CatchClauseÍÒÍJMªIdentifierÍÙÍŞ¥errorN®BlockStatementÍàÍJ’Q³ExpressionStatementÍïÍ'U®CallExpressionÍïÍ&S°MemberExpressionÍïÍüMªIdentifierÍïÍö§consoleMªIdentifierÍ÷Íü¥errorÂÂ’_¯TemplateLiteralÍıÍ‘`¯TemplateElementÍşÍaÙ/[getAllFilesWithInfo] è·å–æ–‡ä»¶åˆ—è¡¨å¤±è´¥:Ù/[getAllFilesWithInfo] è·å–æ–‡ä»¶åˆ—è¡¨å¤±è´¥:ÃMªIdentifierÍ Í%¥errorÂY¯ReturnStatementÍ5Í?b¯ArrayExpressionÍ<Í>ÀO°MethodDefinitionÍ…Í±ÂÂMªIdentifierÍ…Í“®formatFileSize¦methodP²FunctionExpressionÍ“Í±ÀÂÂÂ‘MªIdentifierÍ”Í™¥bytesN®BlockStatementÍ›Í±•]«IfStatementÍ¦ÍÑ[°BinaryExpressionÍªÍµMªIdentifierÍªÍ¯¥bytes£===\§LiteralÍ´Íµ ¡0Y¯ReturnStatementÍÄÍÑ\§LiteralÍËÍĞ£0 B¥'0 B'ÀW³VariableDeclarationÍÛÍê‘X²VariableDeclaratorÍáÍéMªIdentifierÍáÍâ¡k\§LiteralÍåÍéÍ ¤1024¥constW³VariableDeclarationÍôÍ‘X²VariableDeclaratorÍúÍMªIdentifierÍúÍÿ¥sizesb¯ArrayExpressionÍÍ”\§LiteralÍÍ¡B£'B'\§LiteralÍÍ¢KB¤'KB'\§LiteralÍÍ¢MB¤'MB'\§LiteralÍÍ¢GB¤'GB'¥constW³VariableDeclarationÍ$ÍX‘X²VariableDeclaratorÍ*ÍWMªIdentifierÍ*Í+¡iU®CallExpressionÍ.ÍWS°MemberExpressionÍ.Í8MªIdentifierÍ.Í2¤MathMªIdentifierÍ3Í8¥floorÂÂ‘[°BinaryExpressionÍ9ÍVU®CallExpressionÍ9ÍHS°MemberExpressionÍ9ÍAMªIdentifierÍ9Í=¤MathMªIdentifierÍ>ÍA£logÂÂ‘MªIdentifierÍBÍG¥bytesÂ¡/U®CallExpressionÍKÍVS°MemberExpressionÍKÍSMªIdentifierÍKÍO¤MathMªIdentifierÍPÍS£logÂÂ‘MªIdentifierÍTÍU¡kÂÂ¥constY¯ReturnStatementÍbÍª_¯TemplateLiteralÍiÍ©’U®CallExpressionÍlÍ›MªIdentifierÍlÍvªparseFloat‘U®CallExpressionÍwÍšS°MemberExpressionÍwÍ—[°BinaryExpressionÍxÍMªIdentifierÍxÍ}¥bytes¡/U®CallExpressionÍ€ÍS°MemberExpressionÍ€ÍˆMªIdentifierÍ€Í„¤MathMªIdentifierÍ…Íˆ£powÂÂ’MªIdentifierÍ‰ÍŠ¡kMªIdentifierÍŒÍ¡iÂMªIdentifierÍÍ—§toFixedÂÂ‘\§LiteralÍ˜Í™¡1ÂÂS°MemberExpressionÍŸÍ§MªIdentifierÍŸÍ¤¥sizesMªIdentifierÍ¥Í¦¡iÃÂ“`¯TemplateElementÍjÍja  Â`¯TemplateElementÍœÍa¡ ¡ Â`¯TemplateElementÍ¨Í¨a  ÃO°MethodDefinitionÍ·ÍFÂÂMªIdentifierÍ·ÍÁªformatDate¦methodP²FunctionExpressionÍÁÍFÀÂÂÂ‘MªIdentifierÍÂÍË©timestampN®BlockStatementÍÍÍF‘V¬TryStatementÍØÍ?N®BlockStatementÍÜÍÿ•W³VariableDeclarationÍëÍ‘X²VariableDeclaratorÍñÍMªIdentifierÍñÍõ¤dateÔrg•¤type¥start£end¦callee©arguments­NewExpressionÍøÍMªIdentifierÍüÍ ¤Date‘MªIdentifierÍÍ
-©timestamp¥constW³VariableDeclarationÍÍ:‘X²VariableDeclaratorÍ Í9MªIdentifierÍ Í$¤yearU®CallExpressionÍ'Í9S°MemberExpressionÍ'Í7MªIdentifierÍ'Í+¤dateMªIdentifierÍ,Í7«getFullYearÂÂÂ¥constW³VariableDeclarationÍHÍƒ‘X²VariableDeclaratorÍNÍ‚MªIdentifierÍNÍS¥monthU®CallExpressionÍVÍ‚S°MemberExpressionÍVÍzU®CallExpressionÍVÍqMªIdentifierÍVÍ\¦String‘[°BinaryExpressionÍ]ÍpU®CallExpressionÍ]ÍlS°MemberExpressionÍ]ÍjMªIdentifierÍ]Ía¤dateMªIdentifierÍbÍj¨getMonthÂÂÂ¡+\§LiteralÍoÍp¡1ÂMªIdentifierÍrÍz¨padStartÂÂ’\§LiteralÍ{Í|¡2\§LiteralÍ~Í¡0£'0'Â¥constW³VariableDeclarationÍ‘ÍÅ‘X²VariableDeclaratorÍ—ÍÄMªIdentifierÍ—Íš£dayU®CallExpressionÍÍÄS°MemberExpressionÍÍ¼U®CallExpressionÍÍ³MªIdentifierÍÍ£¦String‘U®CallExpressionÍ¤Í²S°MemberExpressionÍ¤Í°MªIdentifierÍ¤Í¨¤dateMªIdentifierÍ©Í°§getDateÂÂÂÂMªIdentifierÍ´Í¼¨padStartÂÂ’\§LiteralÍ½Í¾¡2\§LiteralÍÀÍÃ¡0£'0'Â¥constY¯ReturnStatementÍÓÍô_¯TemplateLiteralÍÚÍó“MªIdentifierÍİÍá¤yearMªIdentifierÍåÍê¥monthMªIdentifierÍîÍñ£day”`¯TemplateElementÍÛÍÛa  Â`¯TemplateElementÍâÍãa¡-¡-Â`¯TemplateElementÍëÍìa¡-¡-Â`¯TemplateElementÍòÍòa  ÃZ«CatchClauseÍ	Í?MªIdentifierÍÍ¥errorN®BlockStatementÍÍ?‘Y¯ReturnStatementÍ&Í4\§LiteralÍ-Í3¬æœªçŸ¥æ—¥æœŸ®'æœªçŸ¥æ—¥æœŸ'ÀO°MethodDefinitionÍ	Í3ÂÂMªIdentifierÍÍªfileExists¦methodP²FunctionExpressionÍÍ3ÀÂÂÃ‘MªIdentifierÍÍ"¨filenameN®BlockStatementÍ$Í3‘V¬TryStatementÍ/Í,N®BlockStatementÍ3Íõ’W³VariableDeclarationÍBÍr‘X²VariableDeclaratorÍHÍqMªIdentifierÍHÍP¨filePath_¯TemplateLiteralÍSÍq’S°MemberExpressionÍVÍcT®ThisExpressionÍVÍZMªIdentifierÍ[Íc¨filesDirÂÂMªIdentifierÍgÍo¨filename“`¯TemplateElementÍTÍTa  Â`¯TemplateElementÍdÍea¡/¡/Â`¯TemplateElementÍpÍpa  Ã¥constV¬TryStatementÍ³Í‡N®BlockStatementÍ·Í’Q³ExpressionStatementÍÊÍäU®CallExpressionÍÊÍãS°MemberExpressionÍÊÍÙMªIdentifierÍÊÍĞ¦fileIoMªIdentifierÍÑÍÙ¨statSyncÂÂ‘MªIdentifierÍÚÍâ¨filePathÂY¯ReturnStatementÍöÍ\§LiteralÍıÍÃ¤trueZ«CatchClauseÍÍ‡MªIdentifierÍ&Í+¥errorN®BlockStatementÍ-Í‡‘Y¯ReturnStatementÍkÍx\§LiteralÍrÍwÂ¥falseÀZ«CatchClauseÍÿÍ,ÀN®BlockStatementÍÍ,‘Y¯ReturnStatementÍÍ!\§LiteralÍÍ Â¥falseÀO°MethodDefinitionÍ9Í&-ÂÂMªIdentifierÍ?ÍIªrenameFile¦methodP²FunctionExpressionÍIÍ&-ÀÂÂÃ’MªIdentifierÍJÍQ§oldNameMªIdentifierÍSÍZ§newNameN®BlockStatementÍ\Í&-‘V¬TryStatementÍgÍ&&N®BlockStatementÍkÍ%³›]«IfStatementÍ’Í >[±LogicalExpressionÍ–ÍÜ[±LogicalExpressionÍ–ÍÃ[±LogicalExpressionÍ–Íª^¯UnaryExpressionÍ–Í¡!ÃMªIdentifierÍ—Í§oldName¢||^¯UnaryExpressionÍ¢Íª¡!ÃMªIdentifierÍ£Íª§newName¢||[°BinaryExpressionÍ®ÍÃU®CallExpressionÍ®Í¼S°MemberExpressionÍ®ÍºMªIdentifierÍ®Íµ§oldNameMªIdentifierÍ¶Íº¤trimÂÂÂ£===\§LiteralÍÁÍÃ ¢''¢||[°BinaryExpressionÍÇÍÜU®CallExpressionÍÇÍÕS°MemberExpressionÍÇÍÓMªIdentifierÍÇÍÎ§newNameMªIdentifierÍÏÍÓ¤trimÂÂÂ£===\§LiteralÍÚÍÜ ¢''N®BlockStatementÍŞÍ >’Q³ExpressionStatementÍñÍ U®CallExpressionÍñÍ S°MemberExpressionÍñÍşMªIdentifierÍñÍø§consoleMªIdentifierÍùÍş¥errorÂÂ‘\§LiteralÍÿÍ Ù'é‡å‘½åå¤±è´¥ï¼šæ–‡ä»¶åä¸èƒ½ä¸ºç©ºÙ)'é‡å‘½åå¤±è´¥ï¼šæ–‡ä»¶åä¸èƒ½ä¸ºç©º'ÂY¯ReturnStatementÍ "Í /\§LiteralÍ )Í .Â¥falseÀQ³ExpressionStatementÍ dÍ }R´AssignmentExpressionÍ dÍ |¡=MªIdentifierÍ dÍ k§oldNameU®CallExpressionÍ nÍ |S°MemberExpressionÍ nÍ zMªIdentifierÍ nÍ u§oldNameMªIdentifierÍ vÍ z¤trimÂÂÂQ³ExpressionStatementÍ ‹Í ¤R´AssignmentExpressionÍ ‹Í £¡=MªIdentifierÍ ‹Í ’§newNameU®CallExpressionÍ •Í £S°MemberExpressionÍ •Í ¡MªIdentifierÍ •Í œ§newNameMªIdentifierÍ Í ¡¤trimÂÂÂ]«IfStatementÍ ÑÍ!J[°BinaryExpressionÍ ÕÍ èMªIdentifierÍ ÕÍ Ü§oldName£===MªIdentifierÍ áÍ è§newNameN®BlockStatementÍ êÍ!J’Q³ExpressionStatementÍ ıÍ!U®CallExpressionÍ ıÍ!S°MemberExpressionÍ ıÍ!
-MªIdentifierÍ ıÍ!§consoleMªIdentifierÍ!Í!
-¥errorÂÂ‘\§LiteralÍ!Í!Ù'é‡å‘½åå¤±è´¥ï¼šæ–°æ—§æ–‡ä»¶åç›¸åŒÙ)'é‡å‘½åå¤±è´¥ï¼šæ–°æ—§æ–‡ä»¶åç›¸åŒ'ÂY¯ReturnStatementÍ!.Í!;\§LiteralÍ!5Í!:Â¥falseÀ]«IfStatementÍ!vÍ"^¯UnaryExpressionÍ!zÍ!˜¡!ÃU®CallExpressionÍ!{Í!˜S°MemberExpressionÍ!{Í!T®ThisExpressionÍ!{Í!MªIdentifierÍ!€Í!¯isValidFilenameÂÂ‘MªIdentifierÍ!Í!—§newNameÂN®BlockStatementÍ!šÍ"’Q³ExpressionStatementÍ!­Í!×U®CallExpressionÍ!­Í!ÖS°MemberExpressionÍ!­Í!ºMªIdentifierÍ!­Í!´§consoleMªIdentifierÍ!µÍ!º¥errorÂÂ‘_¯TemplateLiteralÍ!»Í!Õ‘MªIdentifierÍ!ÌÍ!Ó§newName’`¯TemplateElementÍ!¼Í!ÊaÙ(é‡å‘½åå¤±è´¥ï¼šæ–°æ–‡ä»¶åä¸åˆæ³• Ù(é‡å‘½åå¤±è´¥ï¼šæ–°æ–‡ä»¶åä¸åˆæ³• Â`¯TemplateElementÍ!ÔÍ!Ôa  ÃÂY¯ReturnStatementÍ!éÍ!ö\§LiteralÍ!ğÍ!õÂ¥falseÀW³VariableDeclarationÍ"-Í"[‘X²VariableDeclaratorÍ"3Í"ZMªIdentifierÍ"3Í":§oldPath_¯TemplateLiteralÍ"=Í"Z’S°MemberExpressionÍ"@Í"MT®ThisExpressionÍ"@Í"DMªIdentifierÍ"EÍ"M¨filesDirÂÂMªIdentifierÍ"QÍ"X§oldName“`¯TemplateElementÍ">Í">a  Â`¯TemplateElementÍ"NÍ"Oa¡/¡/Â`¯TemplateElementÍ"YÍ"Ya  Ã¥constW³VariableDeclarationÍ"iÍ"—‘X²VariableDeclaratorÍ"oÍ"–MªIdentifierÍ"oÍ"v§newPath_¯TemplateLiteralÍ"yÍ"–’S°MemberExpressionÍ"|Í"‰T®ThisExpressionÍ"|Í"€MªIdentifierÍ"Í"‰¨filesDirÂÂMªIdentifierÍ"Í"”§newName“`¯TemplateElementÍ"zÍ"za  Â`¯TemplateElementÍ"ŠÍ"‹a¡/¡/Â`¯TemplateElementÍ"•Í"•a  Ã¥constQ³ExpressionStatementÍ"¥Í"ÔU®CallExpressionÍ"¥Í"ÓS°MemberExpressionÍ"¥Í"°MªIdentifierÍ"¥Í"¬§consoleMªIdentifierÍ"­Í"°£logÂÂ‘_¯TemplateLiteralÍ"±Í"Ò’MªIdentifierÍ"»Í"Â§oldPathMªIdentifierÍ"ÉÍ"Ğ§newPath“`¯TemplateElementÍ"²Í"¹a±é‡å‘½åæ–‡ä»¶: ±é‡å‘½åæ–‡ä»¶: Â`¯TemplateElementÍ"ÃÍ"Ça¤ -> ¤ -> Â`¯TemplateElementÍ"ÑÍ"Ña  ÃÂ]«IfStatementÍ"ÿÍ#^¯UnaryExpressionÍ#Í#"¡!ÃY¯AwaitExpressionÍ#Í#"U®CallExpressionÍ#
-Í#"S°MemberExpressionÍ#
-Í#T®ThisExpressionÍ#
-Í#MªIdentifierÍ#Í#ªfileExistsÂÂ‘MªIdentifierÍ#Í#!§oldNameÂN®BlockStatementÍ#$Í#’Q³ExpressionStatementÍ#7Í#`U®CallExpressionÍ#7Í#_S°MemberExpressionÍ#7Í#DMªIdentifierÍ#7Í#>§consoleMªIdentifierÍ#?Í#D¥errorÂÂ‘_¯TemplateLiteralÍ#EÍ#^‘MªIdentifierÍ#UÍ#\§oldName’`¯TemplateElementÍ#FÍ#SaÙ%é‡å‘½åå¤±è´¥ï¼šåŸæ–‡ä»¶ä¸å­˜åœ¨ Ù%é‡å‘½åå¤±è´¥ï¼šåŸæ–‡ä»¶ä¸å­˜åœ¨ Â`¯TemplateElementÍ#]Í#]a  ÃÂY¯ReturnStatementÍ#rÍ#\§LiteralÍ#yÍ#~Â¥falseÀ]«IfStatementÍ#»Í$IY¯AwaitExpressionÍ#¿Í#İU®CallExpressionÍ#ÅÍ#İS°MemberExpressionÍ#ÅÍ#ÔT®ThisExpressionÍ#ÅÍ#ÉMªIdentifierÍ#ÊÍ#ÔªfileExistsÂÂ‘MªIdentifierÍ#ÕÍ#Ü§newNameÂN®BlockStatementÍ#ßÍ$I’Q³ExpressionStatementÍ#òÍ$U®CallExpressionÍ#òÍ$S°MemberExpressionÍ#òÍ#ÿMªIdentifierÍ#òÍ#ù§consoleMªIdentifierÍ#úÍ#ÿ¥errorÂÂ‘_¯TemplateLiteralÍ$ Í$‘MªIdentifierÍ$Í$§newName’`¯TemplateElementÍ$Í$aÙ%é‡å‘½åå¤±è´¥ï¼šæ–°æ–‡ä»¶å·²å­˜åœ¨ Ù%é‡å‘½åå¤±è´¥ï¼šæ–°æ–‡ä»¶å·²å­˜åœ¨ Â`¯TemplateElementÍ$Í$a  ÃÂY¯ReturnStatementÍ$-Í$:\§LiteralÍ$4Í$9Â¥falseÀV¬TryStatementÍ$pÍ%¨N®BlockStatementÍ$tÍ%“Q³ExpressionStatementÍ$‡Í$«U®CallExpressionÍ$‡Í$ªS°MemberExpressionÍ$‡Í$˜MªIdentifierÍ$‡Í$¦fileIoMªIdentifierÍ$Í$˜ªrenameSyncÂÂ’MªIdentifierÍ$™Í$ §oldPathMªIdentifierÍ$¢Í$©§newPathÂQ³ExpressionStatementÍ$½Í$ìU®CallExpressionÍ$½Í$ëS°MemberExpressionÍ$½Í$ÈMªIdentifierÍ$½Í$Ä§consoleMªIdentifierÍ$ÅÍ$È£logÂÂ‘_¯TemplateLiteralÍ$ÉÍ$ê’MªIdentifierÍ$ÓÍ$Ú§oldNameMªIdentifierÍ$áÍ$è§newName“`¯TemplateElementÍ$ÊÍ$Ña±é‡å‘½åæˆåŠŸ: ±é‡å‘½åæˆåŠŸ: Â`¯TemplateElementÍ$ÛÍ$ßa¤ -> ¤ -> Â`¯TemplateElementÍ$éÍ$éa  ÃÂY¯ReturnStatementÍ$şÍ%
-\§LiteralÍ%Í%	Ã¤trueZ«CatchClauseÍ%'Í%¨MªIdentifierÍ%.Í%3¥errorN®BlockStatementÍ%5Í%¨’Q³ExpressionStatementÍ%HÍ%zU®CallExpressionÍ%HÍ%yS°MemberExpressionÍ%HÍ%UMªIdentifierÍ%HÍ%O§consoleMªIdentifierÍ%PÍ%U¥errorÂÂ‘_¯TemplateLiteralÍ%VÍ%x‘[±LogicalExpressionÍ%`Í%vS°MemberExpressionÍ%`Í%mMªIdentifierÍ%`Í%e¥errorMªIdentifierÍ%fÍ%m§messageÂÂ¢||MªIdentifierÍ%qÍ%v¥error’`¯TemplateElementÍ%WÍ%^a±é‡å‘½åå¤±è´¥: ±é‡å‘½åå¤±è´¥: Â`¯TemplateElementÍ%wÍ%wa  ÃÂY¯ReturnStatementÍ%ŒÍ%™\§LiteralÍ%“Í%˜Â¥falseÀZ«CatchClauseÍ%½Í&&MªIdentifierÍ%ÄÍ%É¥errorN®BlockStatementÍ%ËÍ&&’Q³ExpressionStatementÍ%ÚÍ& U®CallExpressionÍ%ÚÍ%ÿS°MemberExpressionÍ%ÚÍ%çMªIdentifierÍ%ÚÍ%á§consoleMªIdentifierÍ%âÍ%ç¥errorÂÂ‘_¯TemplateLiteralÍ%èÍ%ş‘MªIdentifierÍ%÷Í%ü¥error’`¯TemplateElementÍ%éÍ%õaÙ é‡å‘½åæ–‡ä»¶æ—¶å‘ç”Ÿé”™è¯¯: Ù é‡å‘½åæ–‡ä»¶æ—¶å‘ç”Ÿé”™è¯¯: Â`¯TemplateElementÍ%ıÍ%ıa  ÃÂY¯ReturnStatementÍ&Í&\§LiteralÍ&Í&Â¥falseÀO°MethodDefinitionÍ&‰Í)£ÂÂMªIdentifierÍ&‰Í&˜¯isValidFilename¦methodP²FunctionExpressionÍ&˜Í)£ÀÂÂÂ‘MªIdentifierÍ&™Í&¡¨filenameN®BlockStatementÍ&£Í)£˜]«IfStatementÍ&®Í&ş[±LogicalExpressionÍ&²Í&Õ^¯UnaryExpressionÍ&²Í&»¡!ÃMªIdentifierÍ&³Í&»¨filename¢||[°BinaryExpressionÍ&¿Í&ÕU®CallExpressionÍ&¿Í&ÎS°MemberExpressionÍ&¿Í&ÌMªIdentifierÍ&¿Í&Ç¨filenameMªIdentifierÍ&ÈÍ&Ì¤trimÂÂÂ£===\§LiteralÍ&ÓÍ&Õ ¢''N®BlockStatementÍ&×Í&ş‘Y¯ReturnStatementÍ&æÍ&ó\§LiteralÍ&íÍ&òÂ¥falseÀW³VariableDeclarationÍ'Í'?‘X²VariableDeclaratorÍ'!Í'>MªIdentifierÍ'!Í'-¬illegalCharsÔrh–¤type¥start£end¥value£raw¥regex§LiteralÍ'0Í'>’¬[<>:"/\\|?*] ®/[<>:"/\\|?*]/Ôri’§pattern¥flags¬[<>:"/\\|?*] ¥const]«IfStatementÍ'IÍ'‘U®CallExpressionÍ'MÍ'hS°MemberExpressionÍ'MÍ'^MªIdentifierÍ'MÍ'Y¬illegalCharsMªIdentifierÍ'ZÍ'^¤testÂÂ‘MªIdentifierÍ'_Í'g¨filenameÂN®BlockStatementÍ'jÍ'‘‘Y¯ReturnStatementÍ'yÍ'†\§LiteralÍ'€Í'…Â¥falseÀ]«IfStatementÍ'¯Í'ñ[°BinaryExpressionÍ'³Í'ÈS°MemberExpressionÍ'³Í'ÂMªIdentifierÍ'³Í'»¨filenameMªIdentifierÍ'¼Í'Â¦lengthÂÂ¡>\§LiteralÍ'ÅÍ'ÈÌÿ£255N®BlockStatementÍ'ÊÍ'ñ‘Y¯ReturnStatementÍ'ÙÍ'æ\§LiteralÍ'àÍ'åÂ¥falseÀW³VariableDeclarationÍ(Í(í‘X²VariableDeclaratorÍ(Í(ìMªIdentifierÍ(Í(#­reservedNamesb¯ArrayExpressionÍ(&Í(ìÜ \§LiteralÍ('Í(,£CON¥'CON'\§LiteralÍ(.Í(3£PRN¥'PRN'\§LiteralÍ(5Í(:£AUX¥'AUX'\§LiteralÍ(<Í(A£NUL¥'NUL'\§LiteralÍ(CÍ(I¤COM1¦'COM1'\§LiteralÍ(KÍ(Q¤COM2¦'COM2'\§LiteralÍ(SÍ(Y¤COM3¦'COM3'\§LiteralÍ([Í(a¤COM4¦'COM4'\§LiteralÍ(pÍ(v¤COM5¦'COM5'\§LiteralÍ(xÍ(~¤COM6¦'COM6'\§LiteralÍ(€Í(†¤COM7¦'COM7'\§LiteralÍ(ˆÍ(¤COM8¦'COM8'\§LiteralÍ(Í(–¤COM9¦'COM9'\§LiteralÍ(˜Í(¤LPT1¦'LPT1'\§LiteralÍ( Í(¦¤LPT2¦'LPT2'\§LiteralÍ(µÍ(»¤LPT3¦'LPT3'\§LiteralÍ(½Í(Ã¤LPT4¦'LPT4'\§LiteralÍ(ÅÍ(Ë¤LPT5¦'LPT5'\§LiteralÍ(ÍÍ(Ó¤LPT6¦'LPT6'\§LiteralÍ(ÕÍ(Û¤LPT7¦'LPT7'\§LiteralÍ(İÍ(ã¤LPT8¦'LPT8'\§LiteralÍ(åÍ(ë¤LPT9¦'LPT9'¥constW³VariableDeclarationÍ(÷Í).‘X²VariableDeclaratorÍ(ıÍ)-MªIdentifierÍ(ıÍ)©nameUpperU®CallExpressionÍ)	Í)-S°MemberExpressionÍ)	Í)+S°MemberExpressionÍ)	Í)U®CallExpressionÍ)	Í)S°MemberExpressionÍ)	Í)MªIdentifierÍ)	Í)¨filenameMªIdentifierÍ)Í)¥splitÂÂ‘\§LiteralÍ)Í)¡.£'.'Â\§LiteralÍ)Í) ¡0ÃÂMªIdentifierÍ) Í)+«toUpperCaseÂÂÂ¥const]«IfStatementÍ)8Í)†U®CallExpressionÍ)<Í)]S°MemberExpressionÍ)<Í)RMªIdentifierÍ)<Í)I­reservedNamesMªIdentifierÍ)JÍ)R¨includesÂÂ‘MªIdentifierÍ)SÍ)\©nameUpperÂN®BlockStatementÍ)_Í)†‘Y¯ReturnStatementÍ)nÍ){\§LiteralÍ)uÍ)zÂ¥falseÀY¯ReturnStatementÍ)Í)œ\§LiteralÍ)—Í)›Ã¤trueO°MethodDefinitionÍ)©Í-3ÂÂMªIdentifierÍ)¯Í)¹ªupdateFile¦methodP²FunctionExpressionÍ)¹Í-3ÀÂÂÃ’MªIdentifierÍ)ºÍ)Â¨filenameMªIdentifierÍ)ÄÍ)Ë§contentN®BlockStatementÍ)ÍÍ-3‘V¬TryStatementÍ)ØÍ-,N®BlockStatementÍ)ÜÍ,£šW³VariableDeclarationÍ)ëÍ* ‘X²VariableDeclaratorÍ)ñÍ*MªIdentifierÍ)ñÍ)ù¨filePath[°BinaryExpressionÍ)üÍ*[°BinaryExpressionÍ)üÍ*U®CallExpressionÍ)üÍ*S°MemberExpressionÍ)üÍ*T®ThisExpressionÍ)üÍ* MªIdentifierÍ*Í*«getFilesDirÂÂÂ¡+\§LiteralÍ*Í*¡/£'/'¡+MªIdentifierÍ*Í*¨filename¥const]«IfStatementÍ*.Í*ƒ^¯UnaryExpressionÍ*2Í*R¡!ÃY¯AwaitExpressionÍ*3Í*RU®CallExpressionÍ*9Í*RS°MemberExpressionÍ*9Í*HT®ThisExpressionÍ*9Í*=MªIdentifierÍ*>Í*HªfileExistsÂÂ‘MªIdentifierÍ*IÍ*Q¨filenameÂN®BlockStatementÍ*TÍ*ƒ‘Y¯ReturnStatementÍ*gÍ*t\§LiteralÍ*nÍ*sÂ¥falseÀW³VariableDeclarationÍ*‘Í*â‘X²VariableDeclaratorÍ*—Í*áMªIdentifierÍ*—Í*›¤fileY¯AwaitExpressionÍ*Í*áU®CallExpressionÍ*¤Í*áS°MemberExpressionÍ*¤Í*«MªIdentifierÍ*¤Í*¦¢fsMªIdentifierÍ*§Í*«¤openÂÂ’MªIdentifierÍ*¬Í*´¨filePath[°BinaryExpressionÍ*¶Í*àS°MemberExpressionÍ*¶Í*ÌS°MemberExpressionÍ*¶Í*ÁMªIdentifierÍ*¶Í*¸¢fsMªIdentifierÍ*¹Í*Á¨OpenModeÂÂMªIdentifierÍ*ÂÍ*ÌªWRITE_ONLYÂÂ¡|S°MemberExpressionÍ*ÏÍ*àS°MemberExpressionÍ*ÏÍ*ÚMªIdentifierÍ*ÏÍ*Ñ¢fsMªIdentifierÍ*ÒÍ*Ú¨OpenModeÂÂMªIdentifierÍ*ÛÍ*à¥TRUNCÂÂÂ¥constW³VariableDeclarationÍ*ğÍ+(‘X²VariableDeclaratorÍ*öÍ+'MªIdentifierÍ*öÍ+«arrayBufferg­NewExpressionÍ+Í+'MªIdentifierÍ+Í+«ArrayBuffer‘[°BinaryExpressionÍ+Í+&S°MemberExpressionÍ+Í+"MªIdentifierÍ+Í+§contentMªIdentifierÍ+Í+"¦lengthÂÂ¡*\§LiteralÍ+%Í+&¡2¥constW³VariableDeclarationÍ+6Í+a‘X²VariableDeclaratorÍ+<Í+`MªIdentifierÍ+<Í+D¨dataViewg­NewExpressionÍ+GÍ+`MªIdentifierÍ+KÍ+S¨DataView‘MªIdentifierÍ+TÍ+_«arrayBuffer¥constÔrj—¤type¥start£end¤init¤test¦update¤body¬ForStatementÍ+oÍ+ñW³VariableDeclarationÍ+tÍ+}‘X²VariableDeclaratorÍ+xÍ+}MªIdentifierÍ+xÍ+y¡i\§LiteralÍ+|Í+} ¡0£let[°BinaryExpressionÍ+Í+‘MªIdentifierÍ+Í+€¡i¡<S°MemberExpressionÍ+ƒÍ+‘MªIdentifierÍ+ƒÍ+Š§contentMªIdentifierÍ+‹Í+‘¦lengthÂÂ^°UpdateExpressionÍ+“Í+–¢++ÂMªIdentifierÍ+“Í+”¡iN®BlockStatementÍ+˜Í+ñ‘Q³ExpressionStatementÍ+«Í+âU®CallExpressionÍ+«Í+áS°MemberExpressionÍ+«Í+½MªIdentifierÍ+«Í+³¨dataViewMªIdentifierÍ+´Í+½©setUint16ÂÂ“[°BinaryExpressionÍ+¾Í+ÃMªIdentifierÍ+¾Í+¿¡i¡*\§LiteralÍ+ÂÍ+Ã¡2U®CallExpressionÍ+ÅÍ+ÚS°MemberExpressionÍ+ÅÍ+×MªIdentifierÍ+ÅÍ+Ì§contentMªIdentifierÍ+ÍÍ+×ªcharCodeAtÂÂ‘MªIdentifierÍ+ØÍ+Ù¡iÂ\§LiteralÍ+ÜÍ+àÃ¤trueÂQ³ExpressionStatementÍ+ÿÍ,$Y¯AwaitExpressionÍ+ÿÍ,#U®CallExpressionÍ,Í,#S°MemberExpressionÍ,Í,MªIdentifierÍ,Í,¢fsMªIdentifierÍ,Í,¥writeÂÂ’S°MemberExpressionÍ,Í,MªIdentifierÍ,Í,¤fileMªIdentifierÍ,Í,¢fdÂÂMªIdentifierÍ,Í,"«arrayBufferÂQ³ExpressionStatementÍ,2Í,GY¯AwaitExpressionÍ,2Í,FU®CallExpressionÍ,8Í,FS°MemberExpressionÍ,8Í,@MªIdentifierÍ,8Í,:¢fsMªIdentifierÍ,;Í,@¥closeÂÂ‘MªIdentifierÍ,AÍ,E¤fileÂQ³ExpressionStatementÍ,UÍ,~U®CallExpressionÍ,UÍ,}S°MemberExpressionÍ,UÍ,`MªIdentifierÍ,UÍ,[¦LoggerMªIdentifierÍ,\Í,`¤infoÂÂ‘_¯TemplateLiteralÍ,aÍ,|‘MªIdentifierÍ,rÍ,z¨filename’`¯TemplateElementÍ,bÍ,pa®File updated: ®File updated: Â`¯TemplateElementÍ,{Í,{a  ÃÂY¯ReturnStatementÍ,ŒÍ,˜\§LiteralÍ,“Í,—Ã¤trueZ«CatchClauseÍ,­Í-,MªIdentifierÍ,´Í,¹¥errorN®BlockStatementÍ,»Í-,’Q³ExpressionStatementÍ,ÊÍ-U®CallExpressionÍ,ÊÍ-S°MemberExpressionÍ,ÊÍ,ÖMªIdentifierÍ,ÊÍ,Ğ¦LoggerMªIdentifierÍ,ÑÍ,Ö¥errorÂÂ‘_¯TemplateLiteralÍ,×Í-‘U®CallExpressionÍ,íÍ-S°MemberExpressionÍ,íÍ,ûMªIdentifierÍ,íÍ,ñ¤JSONMªIdentifierÍ,òÍ,û©stringifyÂÂ‘MªIdentifierÍ,üÍ-¥errorÂ’`¯TemplateElementÍ,ØÍ,ëa³updateFile failed: ³updateFile failed: Â`¯TemplateElementÍ-Í-a  ÃÂY¯ReturnStatementÍ-Í-!\§LiteralÍ-Í- Â¥falseÀÀ“Ôrk•¤type¥start£endªspecifiers¦source±ImportDeclaration ?‘Ôrl”¤type¥start£end¥local¶ImportDefaultSpecifier')MªIdentifier')¢fs\§Literal/>­@ohos.file.fs¯'@ohos.file.fs'k±ImportDeclarationÌAÌ_‘l¶ImportDefaultSpecifierÌHÌNMªIdentifierÌHÌN¦Logger\§LiteralÌTÌ^¨./Loggerª'./Logger'k±ImportDeclarationÌaÌ„‘l¶ImportDefaultSpecifierÌhÌnMªIdentifierÌhÌn¦fileIo\§LiteralÌtÌƒ­@ohos.file.fs¯"@ohos.file.fs"

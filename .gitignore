@@ -1,0 +1,13 @@
+.DS_Store
+entry/build/
+.hvigor/
+
+# ===== IntelliJ / JetBrains / Android Studio =====
+.idea/
+
+# ===== DevEco (Huawei) cache =====
+.idea/.deveco/
+
+# ===== Common cache files =====
+*.cache
+*.cache.json

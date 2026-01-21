@@ -164,8 +164,10 @@ export class FileManager {
       console.log(`[getAllFilesWithInfo] 读取目录: ${filesDir}`);
 
       // 使用 fileIo 而不是 fs（与 getAllFiles 保持一致）
-      const files = fileIo.listFileSync(filesDir);
-      console.log(`[getAllFilesWithInfo] 找到文件: ${files.length} 个`);
+      const allFiles = fileIo.listFileSync(filesDir);
+      // 只显示 .txt 文件，过滤掉系统文件（.开头）和非txt文件
+      const files = allFiles.filter(f => !f.startsWith('.') && f.endsWith('.txt'));
+      console.log(`[getAllFilesWithInfo] 找到txt文件: ${files.length} 个`);
 
       const fileInfos: FileInfo[] = [];
 

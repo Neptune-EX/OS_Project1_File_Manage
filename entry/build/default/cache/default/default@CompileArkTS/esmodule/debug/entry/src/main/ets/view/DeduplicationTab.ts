@@ -2,37 +2,42 @@ if (!("finalizeConstruction" in ViewPU.prototype)) {
     Reflect.set(ViewPU.prototype, "finalizeConstruction", () => { });
 }
 interface DeduplicationTab_Params {
-    deduplicationManager?: DeduplicationManager | null;
+    scanResult?: ScanResult | null;
     isScanning?: boolean;
-    hasScanned?: boolean;
-    refreshKey?: number;
-    totalFilesCount?: number;
-    duplicateGroupsCount?: number;
-    savableSpaceText?: string;
-    duplicateGroups?: DuplicateGroup[];
-    lastScanTimeText?: string;
-    isIncrementalScan?: boolean;
-    scannedFilesCount?: number;
-    newDuplicateGroupsCount?: number;
-    showTrashPanel?: boolean;
-    trashItems?: TrashItem[];
-    isImporting?: boolean;
+    expandedGroups?: string[];
     showMessage?: boolean;
     messageText?: string;
-    messageType?: 'success' | 'error' | 'info';
+    messageType?: string;
+    lastScanTime?: string;
     showConfirmDialog?: boolean;
-    confirmAction?: 'deduplicate' | 'delete' | 'clearTrash';
-    pendingDeleteFile?: FileItem | null;
-    pendingTrashItem?: TrashItem | null;
+    confirmAction?: string;
+    selectedGroupHash?: string;
+    selectedKeepFile?: string;
+    scanProgress?: number;
+    scanProgressText?: string;
+    isRealTimeScanning?: boolean;
+    dynamicGroups?: DuplicateGroup[];
+    dynamicStats?: DynamicStats;
+    displayGroups?: DuplicateGroup[];
+    useWorkerScan?: boolean;
+    scanModeText?: string;
+    showFileContentDialog?: boolean;
+    viewingFileName?: string;
+    viewingFileContent?: string;
+    scanner?: DuplicateScanner | null;
+    filesDir?: string;
 }
-import { DeduplicationManager } from "@bundle:com.example.filesmanger/entry/ets/common/utils/DeduplicationManager";
-import type { DuplicateGroup, FileItem, ImportDirectoryResult, TrashItem } from "@bundle:com.example.filesmanger/entry/ets/common/utils/DeduplicationManager";
-import picker from "@ohos:file.picker";
-// 去重统计信息接口
-interface DeduplicateStats {
-    keep: number;
-    deleteCount: number;
-    saveSpace: number;
+import { DuplicateScanner } from "@bundle:com.example.filesmanger/entry/ets/common/utils/DuplicateScanner";
+import type { DuplicateGroup, DuplicateFileInfo, ScanResult, ScanCallbacks } from "@bundle:com.example.filesmanger/entry/ets/common/utils/DuplicateScanner";
+import fileIo from "@ohos:file.fs";
+import type common from "@ohos:app.ability.common";
+// 动态统计数据接口
+interface DynamicStats {
+    scannedFiles: number;
+    duplicateGroups: number;
+    totalDuplicates: number;
+    totalWasteSize: number;
+    totalWasteSizeReadable: string;
 }
 export class DeduplicationTab extends ViewPU {
     constructor(parent, params, __localStorage, elmtId = -1, paramsLambda = undefined, extraInfo) {
@@ -40,76 +45,48 @@ export class DeduplicationTab extends ViewPU {
         if (typeof paramsLambda === "function") {
             this.paramsGenerator_ = paramsLambda;
         }
-        this.__deduplicationManager = new ObservedPropertyObjectPU(null, this, "deduplicationManager");
+        this.__scanResult = new ObservedPropertyObjectPU(null, this, "scanResult");
         this.__isScanning = new ObservedPropertySimplePU(false, this, "isScanning");
-        this.__hasScanned = new ObservedPropertySimplePU(false, this, "hasScanned");
-        this.__refreshKey = new ObservedPropertySimplePU(0, this, "refreshKey");
-        this.__totalFilesCount = new ObservedPropertySimplePU(0, this, "totalFilesCount");
-        this.__duplicateGroupsCount = new ObservedPropertySimplePU(0, this, "duplicateGroupsCount");
-        this.__savableSpaceText = new ObservedPropertySimplePU('0 B', this, "savableSpaceText");
-        this.__duplicateGroups = new ObservedPropertyObjectPU([], this, "duplicateGroups");
-        this.__lastScanTimeText = new ObservedPropertySimplePU('从未扫描', this, "lastScanTimeText");
-        this.__isIncrementalScan = new ObservedPropertySimplePU(false, this, "isIncrementalScan");
-        this.__scannedFilesCount = new ObservedPropertySimplePU(0, this, "scannedFilesCount");
-        this.__newDuplicateGroupsCount = new ObservedPropertySimplePU(0, this, "newDuplicateGroupsCount");
-        this.__showTrashPanel = new ObservedPropertySimplePU(false, this, "showTrashPanel");
-        this.__trashItems = new ObservedPropertyObjectPU([], this, "trashItems");
-        this.__isImporting = new ObservedPropertySimplePU(false, this, "isImporting");
+        this.__expandedGroups = new ObservedPropertyObjectPU([], this, "expandedGroups");
         this.__showMessage = new ObservedPropertySimplePU(false, this, "showMessage");
         this.__messageText = new ObservedPropertySimplePU('', this, "messageText");
-        this.__messageType = new ObservedPropertySimplePU('info', this, "messageType");
+        this.__messageType = new ObservedPropertySimplePU('success', this, "messageType");
+        this.__lastScanTime = new ObservedPropertySimplePU('', this, "lastScanTime");
         this.__showConfirmDialog = new ObservedPropertySimplePU(false, this, "showConfirmDialog");
-        this.__confirmAction = new ObservedPropertySimplePU('deduplicate', this, "confirmAction");
-        this.__pendingDeleteFile = new ObservedPropertyObjectPU(null, this, "pendingDeleteFile");
-        this.__pendingTrashItem = new ObservedPropertyObjectPU(null, this, "pendingTrashItem");
+        this.__confirmAction = new ObservedPropertySimplePU('', this, "confirmAction");
+        this.__selectedGroupHash = new ObservedPropertySimplePU('', this, "selectedGroupHash");
+        this.__selectedKeepFile = new ObservedPropertySimplePU('', this, "selectedKeepFile");
+        this.__scanProgress = new ObservedPropertySimplePU(0, this, "scanProgress");
+        this.__scanProgressText = new ObservedPropertySimplePU('', this, "scanProgressText");
+        this.__isRealTimeScanning = new ObservedPropertySimplePU(false, this, "isRealTimeScanning");
+        this.__dynamicGroups = new ObservedPropertyObjectPU([], this, "dynamicGroups");
+        this.__dynamicStats = new ObservedPropertyObjectPU({
+            scannedFiles: 0,
+            duplicateGroups: 0,
+            totalDuplicates: 0,
+            totalWasteSize: 0,
+            totalWasteSizeReadable: '0 B'
+        }, this, "dynamicStats");
+        this.__displayGroups = new ObservedPropertyObjectPU([], this, "displayGroups");
+        this.__useWorkerScan = new ObservedPropertySimplePU(true, this, "useWorkerScan");
+        this.__scanModeText = new ObservedPropertySimplePU('Worker多线程', this, "scanModeText");
+        this.__showFileContentDialog = new ObservedPropertySimplePU(false, this, "showFileContentDialog");
+        this.__viewingFileName = new ObservedPropertySimplePU('', this, "viewingFileName");
+        this.__viewingFileContent = new ObservedPropertySimplePU('', this, "viewingFileContent");
+        this.scanner = null;
+        this.filesDir = '';
         this.setInitiallyProvidedValue(params);
         this.finalizeConstruction();
     }
     setInitiallyProvidedValue(params: DeduplicationTab_Params) {
-        if (params.deduplicationManager !== undefined) {
-            this.deduplicationManager = params.deduplicationManager;
+        if (params.scanResult !== undefined) {
+            this.scanResult = params.scanResult;
         }
         if (params.isScanning !== undefined) {
             this.isScanning = params.isScanning;
         }
-        if (params.hasScanned !== undefined) {
-            this.hasScanned = params.hasScanned;
-        }
-        if (params.refreshKey !== undefined) {
-            this.refreshKey = params.refreshKey;
-        }
-        if (params.totalFilesCount !== undefined) {
-            this.totalFilesCount = params.totalFilesCount;
-        }
-        if (params.duplicateGroupsCount !== undefined) {
-            this.duplicateGroupsCount = params.duplicateGroupsCount;
-        }
-        if (params.savableSpaceText !== undefined) {
-            this.savableSpaceText = params.savableSpaceText;
-        }
-        if (params.duplicateGroups !== undefined) {
-            this.duplicateGroups = params.duplicateGroups;
-        }
-        if (params.lastScanTimeText !== undefined) {
-            this.lastScanTimeText = params.lastScanTimeText;
-        }
-        if (params.isIncrementalScan !== undefined) {
-            this.isIncrementalScan = params.isIncrementalScan;
-        }
-        if (params.scannedFilesCount !== undefined) {
-            this.scannedFilesCount = params.scannedFilesCount;
-        }
-        if (params.newDuplicateGroupsCount !== undefined) {
-            this.newDuplicateGroupsCount = params.newDuplicateGroupsCount;
-        }
-        if (params.showTrashPanel !== undefined) {
-            this.showTrashPanel = params.showTrashPanel;
-        }
-        if (params.trashItems !== undefined) {
-            this.trashItems = params.trashItems;
-        }
-        if (params.isImporting !== undefined) {
-            this.isImporting = params.isImporting;
+        if (params.expandedGroups !== undefined) {
+            this.expandedGroups = params.expandedGroups;
         }
         if (params.showMessage !== undefined) {
             this.showMessage = params.showMessage;
@@ -120,80 +97,120 @@ export class DeduplicationTab extends ViewPU {
         if (params.messageType !== undefined) {
             this.messageType = params.messageType;
         }
+        if (params.lastScanTime !== undefined) {
+            this.lastScanTime = params.lastScanTime;
+        }
         if (params.showConfirmDialog !== undefined) {
             this.showConfirmDialog = params.showConfirmDialog;
         }
         if (params.confirmAction !== undefined) {
             this.confirmAction = params.confirmAction;
         }
-        if (params.pendingDeleteFile !== undefined) {
-            this.pendingDeleteFile = params.pendingDeleteFile;
+        if (params.selectedGroupHash !== undefined) {
+            this.selectedGroupHash = params.selectedGroupHash;
         }
-        if (params.pendingTrashItem !== undefined) {
-            this.pendingTrashItem = params.pendingTrashItem;
+        if (params.selectedKeepFile !== undefined) {
+            this.selectedKeepFile = params.selectedKeepFile;
+        }
+        if (params.scanProgress !== undefined) {
+            this.scanProgress = params.scanProgress;
+        }
+        if (params.scanProgressText !== undefined) {
+            this.scanProgressText = params.scanProgressText;
+        }
+        if (params.isRealTimeScanning !== undefined) {
+            this.isRealTimeScanning = params.isRealTimeScanning;
+        }
+        if (params.dynamicGroups !== undefined) {
+            this.dynamicGroups = params.dynamicGroups;
+        }
+        if (params.dynamicStats !== undefined) {
+            this.dynamicStats = params.dynamicStats;
+        }
+        if (params.displayGroups !== undefined) {
+            this.displayGroups = params.displayGroups;
+        }
+        if (params.useWorkerScan !== undefined) {
+            this.useWorkerScan = params.useWorkerScan;
+        }
+        if (params.scanModeText !== undefined) {
+            this.scanModeText = params.scanModeText;
+        }
+        if (params.showFileContentDialog !== undefined) {
+            this.showFileContentDialog = params.showFileContentDialog;
+        }
+        if (params.viewingFileName !== undefined) {
+            this.viewingFileName = params.viewingFileName;
+        }
+        if (params.viewingFileContent !== undefined) {
+            this.viewingFileContent = params.viewingFileContent;
+        }
+        if (params.scanner !== undefined) {
+            this.scanner = params.scanner;
+        }
+        if (params.filesDir !== undefined) {
+            this.filesDir = params.filesDir;
         }
     }
     updateStateVars(params: DeduplicationTab_Params) {
     }
     purgeVariableDependenciesOnElmtId(rmElmtId) {
-        this.__deduplicationManager.purgeDependencyOnElmtId(rmElmtId);
+        this.__scanResult.purgeDependencyOnElmtId(rmElmtId);
         this.__isScanning.purgeDependencyOnElmtId(rmElmtId);
-        this.__hasScanned.purgeDependencyOnElmtId(rmElmtId);
-        this.__refreshKey.purgeDependencyOnElmtId(rmElmtId);
-        this.__totalFilesCount.purgeDependencyOnElmtId(rmElmtId);
-        this.__duplicateGroupsCount.purgeDependencyOnElmtId(rmElmtId);
-        this.__savableSpaceText.purgeDependencyOnElmtId(rmElmtId);
-        this.__duplicateGroups.purgeDependencyOnElmtId(rmElmtId);
-        this.__lastScanTimeText.purgeDependencyOnElmtId(rmElmtId);
-        this.__isIncrementalScan.purgeDependencyOnElmtId(rmElmtId);
-        this.__scannedFilesCount.purgeDependencyOnElmtId(rmElmtId);
-        this.__newDuplicateGroupsCount.purgeDependencyOnElmtId(rmElmtId);
-        this.__showTrashPanel.purgeDependencyOnElmtId(rmElmtId);
-        this.__trashItems.purgeDependencyOnElmtId(rmElmtId);
-        this.__isImporting.purgeDependencyOnElmtId(rmElmtId);
+        this.__expandedGroups.purgeDependencyOnElmtId(rmElmtId);
         this.__showMessage.purgeDependencyOnElmtId(rmElmtId);
         this.__messageText.purgeDependencyOnElmtId(rmElmtId);
         this.__messageType.purgeDependencyOnElmtId(rmElmtId);
+        this.__lastScanTime.purgeDependencyOnElmtId(rmElmtId);
         this.__showConfirmDialog.purgeDependencyOnElmtId(rmElmtId);
         this.__confirmAction.purgeDependencyOnElmtId(rmElmtId);
-        this.__pendingDeleteFile.purgeDependencyOnElmtId(rmElmtId);
-        this.__pendingTrashItem.purgeDependencyOnElmtId(rmElmtId);
+        this.__selectedGroupHash.purgeDependencyOnElmtId(rmElmtId);
+        this.__selectedKeepFile.purgeDependencyOnElmtId(rmElmtId);
+        this.__scanProgress.purgeDependencyOnElmtId(rmElmtId);
+        this.__scanProgressText.purgeDependencyOnElmtId(rmElmtId);
+        this.__isRealTimeScanning.purgeDependencyOnElmtId(rmElmtId);
+        this.__dynamicGroups.purgeDependencyOnElmtId(rmElmtId);
+        this.__dynamicStats.purgeDependencyOnElmtId(rmElmtId);
+        this.__displayGroups.purgeDependencyOnElmtId(rmElmtId);
+        this.__useWorkerScan.purgeDependencyOnElmtId(rmElmtId);
+        this.__scanModeText.purgeDependencyOnElmtId(rmElmtId);
+        this.__showFileContentDialog.purgeDependencyOnElmtId(rmElmtId);
+        this.__viewingFileName.purgeDependencyOnElmtId(rmElmtId);
+        this.__viewingFileContent.purgeDependencyOnElmtId(rmElmtId);
     }
     aboutToBeDeleted() {
-        this.__deduplicationManager.aboutToBeDeleted();
+        this.__scanResult.aboutToBeDeleted();
         this.__isScanning.aboutToBeDeleted();
-        this.__hasScanned.aboutToBeDeleted();
-        this.__refreshKey.aboutToBeDeleted();
-        this.__totalFilesCount.aboutToBeDeleted();
-        this.__duplicateGroupsCount.aboutToBeDeleted();
-        this.__savableSpaceText.aboutToBeDeleted();
-        this.__duplicateGroups.aboutToBeDeleted();
-        this.__lastScanTimeText.aboutToBeDeleted();
-        this.__isIncrementalScan.aboutToBeDeleted();
-        this.__scannedFilesCount.aboutToBeDeleted();
-        this.__newDuplicateGroupsCount.aboutToBeDeleted();
-        this.__showTrashPanel.aboutToBeDeleted();
-        this.__trashItems.aboutToBeDeleted();
-        this.__isImporting.aboutToBeDeleted();
+        this.__expandedGroups.aboutToBeDeleted();
         this.__showMessage.aboutToBeDeleted();
         this.__messageText.aboutToBeDeleted();
         this.__messageType.aboutToBeDeleted();
+        this.__lastScanTime.aboutToBeDeleted();
         this.__showConfirmDialog.aboutToBeDeleted();
         this.__confirmAction.aboutToBeDeleted();
-        this.__pendingDeleteFile.aboutToBeDeleted();
-        this.__pendingTrashItem.aboutToBeDeleted();
+        this.__selectedGroupHash.aboutToBeDeleted();
+        this.__selectedKeepFile.aboutToBeDeleted();
+        this.__scanProgress.aboutToBeDeleted();
+        this.__scanProgressText.aboutToBeDeleted();
+        this.__isRealTimeScanning.aboutToBeDeleted();
+        this.__dynamicGroups.aboutToBeDeleted();
+        this.__dynamicStats.aboutToBeDeleted();
+        this.__displayGroups.aboutToBeDeleted();
+        this.__useWorkerScan.aboutToBeDeleted();
+        this.__scanModeText.aboutToBeDeleted();
+        this.__showFileContentDialog.aboutToBeDeleted();
+        this.__viewingFileName.aboutToBeDeleted();
+        this.__viewingFileContent.aboutToBeDeleted();
         SubscriberManager.Get().delete(this.id__());
         this.aboutToBeDeletedInternal();
     }
-    // 去重管理器
-    private __deduplicationManager: ObservedPropertyObjectPU<DeduplicationManager | null>;
-    get deduplicationManager() {
-        return this.__deduplicationManager.get();
+    private __scanResult: ObservedPropertyObjectPU<ScanResult | null>;
+    get scanResult() {
+        return this.__scanResult.get();
     }
-    set deduplicationManager(newValue: DeduplicationManager | null) {
-        this.__deduplicationManager.set(newValue);
+    set scanResult(newValue: ScanResult | null) {
+        this.__scanResult.set(newValue);
     }
-    // 扫描状态
     private __isScanning: ObservedPropertySimplePU<boolean>;
     get isScanning() {
         return this.__isScanning.get();
@@ -201,102 +218,13 @@ export class DeduplicationTab extends ViewPU {
     set isScanning(newValue: boolean) {
         this.__isScanning.set(newValue);
     }
-    private __hasScanned: ObservedPropertySimplePU<boolean>;
-    get hasScanned() {
-        return this.__hasScanned.get();
+    private __expandedGroups: ObservedPropertyObjectPU<string[]>;
+    get expandedGroups() {
+        return this.__expandedGroups.get();
     }
-    set hasScanned(newValue: boolean) {
-        this.__hasScanned.set(newValue);
+    set expandedGroups(newValue: string[]) {
+        this.__expandedGroups.set(newValue);
     }
-    private __refreshKey: ObservedPropertySimplePU<number>; // 强制刷新
-    get refreshKey() {
-        return this.__refreshKey.get();
-    }
-    set refreshKey(newValue: number) {
-        this.__refreshKey.set(newValue);
-    }
-    // 扫描结果
-    private __totalFilesCount: ObservedPropertySimplePU<number>;
-    get totalFilesCount() {
-        return this.__totalFilesCount.get();
-    }
-    set totalFilesCount(newValue: number) {
-        this.__totalFilesCount.set(newValue);
-    }
-    private __duplicateGroupsCount: ObservedPropertySimplePU<number>;
-    get duplicateGroupsCount() {
-        return this.__duplicateGroupsCount.get();
-    }
-    set duplicateGroupsCount(newValue: number) {
-        this.__duplicateGroupsCount.set(newValue);
-    }
-    private __savableSpaceText: ObservedPropertySimplePU<string>;
-    get savableSpaceText() {
-        return this.__savableSpaceText.get();
-    }
-    set savableSpaceText(newValue: string) {
-        this.__savableSpaceText.set(newValue);
-    }
-    private __duplicateGroups: ObservedPropertyObjectPU<DuplicateGroup[]>;
-    get duplicateGroups() {
-        return this.__duplicateGroups.get();
-    }
-    set duplicateGroups(newValue: DuplicateGroup[]) {
-        this.__duplicateGroups.set(newValue);
-    }
-    // 增量扫描信息
-    private __lastScanTimeText: ObservedPropertySimplePU<string>;
-    get lastScanTimeText() {
-        return this.__lastScanTimeText.get();
-    }
-    set lastScanTimeText(newValue: string) {
-        this.__lastScanTimeText.set(newValue);
-    }
-    private __isIncrementalScan: ObservedPropertySimplePU<boolean>;
-    get isIncrementalScan() {
-        return this.__isIncrementalScan.get();
-    }
-    set isIncrementalScan(newValue: boolean) {
-        this.__isIncrementalScan.set(newValue);
-    }
-    private __scannedFilesCount: ObservedPropertySimplePU<number>;
-    get scannedFilesCount() {
-        return this.__scannedFilesCount.get();
-    }
-    set scannedFilesCount(newValue: number) {
-        this.__scannedFilesCount.set(newValue);
-    }
-    private __newDuplicateGroupsCount: ObservedPropertySimplePU<number>;
-    get newDuplicateGroupsCount() {
-        return this.__newDuplicateGroupsCount.get();
-    }
-    set newDuplicateGroupsCount(newValue: number) {
-        this.__newDuplicateGroupsCount.set(newValue);
-    }
-    // 回收站
-    private __showTrashPanel: ObservedPropertySimplePU<boolean>;
-    get showTrashPanel() {
-        return this.__showTrashPanel.get();
-    }
-    set showTrashPanel(newValue: boolean) {
-        this.__showTrashPanel.set(newValue);
-    }
-    private __trashItems: ObservedPropertyObjectPU<TrashItem[]>;
-    get trashItems() {
-        return this.__trashItems.get();
-    }
-    set trashItems(newValue: TrashItem[]) {
-        this.__trashItems.set(newValue);
-    }
-    // 文件导入
-    private __isImporting: ObservedPropertySimplePU<boolean>;
-    get isImporting() {
-        return this.__isImporting.get();
-    }
-    set isImporting(newValue: boolean) {
-        this.__isImporting.set(newValue);
-    }
-    // 消息提示
     private __showMessage: ObservedPropertySimplePU<boolean>;
     get showMessage() {
         return this.__showMessage.get();
@@ -311,14 +239,20 @@ export class DeduplicationTab extends ViewPU {
     set messageText(newValue: string) {
         this.__messageText.set(newValue);
     }
-    private __messageType: ObservedPropertySimplePU<'success' | 'error' | 'info'>;
+    private __messageType: ObservedPropertySimplePU<string>; // 'success' | 'error' | 'info'
     get messageType() {
         return this.__messageType.get();
     }
-    set messageType(newValue: 'success' | 'error' | 'info') {
+    set messageType(newValue: string) {
         this.__messageType.set(newValue);
     }
-    // 确认对话框
+    private __lastScanTime: ObservedPropertySimplePU<string>;
+    get lastScanTime() {
+        return this.__lastScanTime.get();
+    }
+    set lastScanTime(newValue: string) {
+        this.__lastScanTime.set(newValue);
+    }
     private __showConfirmDialog: ObservedPropertySimplePU<boolean>;
     get showConfirmDialog() {
         return this.__showConfirmDialog.get();
@@ -326,319 +260,360 @@ export class DeduplicationTab extends ViewPU {
     set showConfirmDialog(newValue: boolean) {
         this.__showConfirmDialog.set(newValue);
     }
-    private __confirmAction: ObservedPropertySimplePU<'deduplicate' | 'delete' | 'clearTrash'>;
+    private __confirmAction: ObservedPropertySimplePU<string>; // 'dedup_all' | 'dedup_group'
     get confirmAction() {
         return this.__confirmAction.get();
     }
-    set confirmAction(newValue: 'deduplicate' | 'delete' | 'clearTrash') {
+    set confirmAction(newValue: string) {
         this.__confirmAction.set(newValue);
     }
-    private __pendingDeleteFile: ObservedPropertyObjectPU<FileItem | null>;
-    get pendingDeleteFile() {
-        return this.__pendingDeleteFile.get();
+    private __selectedGroupHash: ObservedPropertySimplePU<string>;
+    get selectedGroupHash() {
+        return this.__selectedGroupHash.get();
     }
-    set pendingDeleteFile(newValue: FileItem | null) {
-        this.__pendingDeleteFile.set(newValue);
+    set selectedGroupHash(newValue: string) {
+        this.__selectedGroupHash.set(newValue);
     }
-    private __pendingTrashItem: ObservedPropertyObjectPU<TrashItem | null>;
-    get pendingTrashItem() {
-        return this.__pendingTrashItem.get();
+    private __selectedKeepFile: ObservedPropertySimplePU<string>;
+    get selectedKeepFile() {
+        return this.__selectedKeepFile.get();
     }
-    set pendingTrashItem(newValue: TrashItem | null) {
-        this.__pendingTrashItem.set(newValue);
+    set selectedKeepFile(newValue: string) {
+        this.__selectedKeepFile.set(newValue);
     }
+    // 可视化相关状态
+    private __scanProgress: ObservedPropertySimplePU<number>; // 扫描进度 0-100
+    get scanProgress() {
+        return this.__scanProgress.get();
+    }
+    set scanProgress(newValue: number) {
+        this.__scanProgress.set(newValue);
+    }
+    private __scanProgressText: ObservedPropertySimplePU<string>; // 进度文本 "当前/总数"
+    get scanProgressText() {
+        return this.__scanProgressText.get();
+    }
+    set scanProgressText(newValue: string) {
+        this.__scanProgressText.set(newValue);
+    }
+    private __isRealTimeScanning: ObservedPropertySimplePU<boolean>; // 是否正在实时扫描
+    get isRealTimeScanning() {
+        return this.__isRealTimeScanning.get();
+    }
+    set isRealTimeScanning(newValue: boolean) {
+        this.__isRealTimeScanning.set(newValue);
+    }
+    private __dynamicGroups: ObservedPropertyObjectPU<DuplicateGroup[]>; // 动态更新的重复组列表
+    get dynamicGroups() {
+        return this.__dynamicGroups.get();
+    }
+    set dynamicGroups(newValue: DuplicateGroup[]) {
+        this.__dynamicGroups.set(newValue);
+    }
+    private __dynamicStats: ObservedPropertyObjectPU<DynamicStats>;
+    get dynamicStats() {
+        return this.__dynamicStats.get();
+    }
+    set dynamicStats(newValue: DynamicStats) {
+        this.__dynamicStats.set(newValue);
+    }
+    private __displayGroups: ObservedPropertyObjectPU<DuplicateGroup[]>; // 当前显示的重复组列表
+    get displayGroups() {
+        return this.__displayGroups.get();
+    }
+    set displayGroups(newValue: DuplicateGroup[]) {
+        this.__displayGroups.set(newValue);
+    }
+    // Worker多线程扫描开关
+    private __useWorkerScan: ObservedPropertySimplePU<boolean>; // 默认使用Worker多线程扫描
+    get useWorkerScan() {
+        return this.__useWorkerScan.get();
+    }
+    set useWorkerScan(newValue: boolean) {
+        this.__useWorkerScan.set(newValue);
+    }
+    private __scanModeText: ObservedPropertySimplePU<string>; // 当前扫描模式文本
+    get scanModeText() {
+        return this.__scanModeText.get();
+    }
+    set scanModeText(newValue: string) {
+        this.__scanModeText.set(newValue);
+    }
+    // 查看文件内容相关状态
+    private __showFileContentDialog: ObservedPropertySimplePU<boolean>;
+    get showFileContentDialog() {
+        return this.__showFileContentDialog.get();
+    }
+    set showFileContentDialog(newValue: boolean) {
+        this.__showFileContentDialog.set(newValue);
+    }
+    private __viewingFileName: ObservedPropertySimplePU<string>;
+    get viewingFileName() {
+        return this.__viewingFileName.get();
+    }
+    set viewingFileName(newValue: string) {
+        this.__viewingFileName.set(newValue);
+    }
+    private __viewingFileContent: ObservedPropertySimplePU<string>;
+    get viewingFileContent() {
+        return this.__viewingFileContent.get();
+    }
+    set viewingFileContent(newValue: string) {
+        this.__viewingFileContent.set(newValue);
+    }
+    private scanner: DuplicateScanner | null;
+    private filesDir: string;
     aboutToAppear() {
-        let context = this.getUIContext().getHostContext() as Context;
-        this.deduplicationManager = new DeduplicationManager(context);
-        this.updateLastScanTime();
-        this.loadTrashItems();
+        const context = this.getUIContext().getHostContext() as Context;
+        this.scanner = DuplicateScanner.getInstance(context);
+        this.lastScanTime = this.scanner.getLastScanTimeFormatted();
+        // 获取文件目录路径
+        const uiAbilityContext = context as common.UIAbilityContext;
+        this.filesDir = uiAbilityContext.filesDir;
     }
-    private updateLastScanTime() {
-        if (this.deduplicationManager) {
-            this.lastScanTimeText = this.deduplicationManager.getLastScanTimeReadable();
-        }
-    }
-    private loadTrashItems() {
-        if (this.deduplicationManager) {
-            this.trashItems = [...this.deduplicationManager.getTrashItems()];
-        }
-    }
-    // 开始扫描
-    private async startScan(incremental: boolean = false) {
-        if (!this.deduplicationManager) {
-            this.showToast('初始化失败', 'error');
-            return;
-        }
-        this.isScanning = true;
-        this.hasScanned = false;
-        // 重置状态（仅全量扫描）
-        if (!incremental) {
-            this.totalFilesCount = 0;
-            this.duplicateGroupsCount = 0;
-            this.savableSpaceText = '0 B';
-            this.duplicateGroups = [];
-            this.deduplicationManager.clearResults();
-        }
+    // 查看文件内容
+    private viewFileContent(filename: string) {
         try {
-            const result = await this.deduplicationManager.scanFilesDir(incremental);
-            // 更新状态变量
-            this.totalFilesCount = result.totalFiles;
-            this.duplicateGroupsCount = result.duplicateGroups;
-            this.savableSpaceText = result.savableSpaceReadable;
-            this.isIncrementalScan = result.isIncremental;
-            this.scannedFilesCount = result.scannedFiles;
-            this.newDuplicateGroupsCount = result.newDuplicateGroups;
-            // 获取重复组数组
-            const groups = this.deduplicationManager.getDuplicateGroups();
-            this.duplicateGroups = [...groups];
-            this.hasScanned = true;
-            this.updateLastScanTime();
-            if (result.duplicateGroups === 0) {
-                this.showToast('未发现重复文件', 'info');
+            const filePath = `${this.filesDir}/${filename}`;
+            const file = fileIo.openSync(filePath, fileIo.OpenMode.READ_ONLY);
+            const stat = fileIo.statSync(filePath);
+            // 限制读取大小，避免内存问题
+            const maxReadSize = 10 * 1024; // 最多读取10KB
+            const readSize = Math.min(stat.size, maxReadSize);
+            const buffer = new ArrayBuffer(readSize);
+            fileIo.readSync(file.fd, buffer);
+            fileIo.closeSync(file);
+            // 转换为字符串
+            const uint8Array = new Uint8Array(buffer);
+            let content = '';
+            for (let i = 0; i < uint8Array.length; i++) {
+                content += String.fromCharCode(uint8Array[i]);
             }
-            else if (incremental && result.scannedFiles === 0) {
-                this.showToast('没有变更文件', 'info');
+            // 如果文件被截断，添加提示
+            if (stat.size > maxReadSize) {
+                content += `\n\n... (文件过大，仅显示前 ${maxReadSize} 字节)`;
             }
-            else if (incremental) {
-                this.showToast(`增量扫描完成，新增 ${result.newDuplicateGroups} 组重复`, 'success');
-            }
-            else {
-                this.showToast(`发现 ${result.duplicateGroups} 组重复文件`, 'success');
-            }
+            this.viewingFileName = filename;
+            this.viewingFileContent = content;
+            this.showFileContentDialog = true;
         }
         catch (error) {
-            console.error('扫描失败:', error);
-            this.showToast('扫描失败，请重试', 'error');
-        }
-        finally {
-            this.isScanning = false;
+            this.showToast(`读取文件失败: ${error}`, 'error');
         }
     }
-    // 切换组展开状态
-    private toggleGroupExpanded(group: DuplicateGroup) {
-        group.expanded = !group.expanded;
-        this.duplicateGroups = [...this.duplicateGroups];
-    }
-    // 切换文件选中状态
-    private toggleFileSelection(group: DuplicateGroup, file: FileItem) {
-        file.selected = !file.selected;
-        if (!file.selected) {
-            const selectedCount = group.files.filter(item => item.selected).length;
-            if (selectedCount === 0) {
-                file.selected = true;
-                this.showToast('每组至少保留一个文件', 'info');
-                return;
-            }
-        }
-        this.duplicateGroups = [...this.duplicateGroups];
-    }
-    // 一键去重准备
-    private prepareAutoDeduplicate() {
-        if (!this.deduplicationManager || this.duplicateGroups.length === 0)
-            return;
-        this.deduplicationManager.autoSelectForDeduplicate();
-        this.duplicateGroups = [...this.deduplicationManager.getDuplicateGroups()];
-        this.confirmAction = 'deduplicate';
-        this.showConfirmDialog = true;
-    }
-    // 执行去重
-    private async executeDeduplicate() {
-        if (!this.deduplicationManager)
-            return;
-        const deletedCount = this.deduplicationManager.executeDeduplicate();
-        this.showConfirmDialog = false;
-        if (deletedCount > 0) {
-            this.showToast(`已移动 ${deletedCount} 个文件到回收站`, 'success');
-            this.loadTrashItems();
-            await this.startScan(false);
-        }
-        else {
-            this.showToast('没有文件被删除', 'info');
-        }
-    }
-    // 手动删除单个文件
-    private deleteOneFile(file: FileItem) {
-        this.pendingDeleteFile = file;
-        this.confirmAction = 'delete';
-        this.showConfirmDialog = true;
-    }
-    // 确认删除单个文件
-    private async confirmDeleteOneFile() {
-        if (!this.deduplicationManager || !this.pendingDeleteFile)
-            return;
-        const success = this.deduplicationManager.deleteFile(this.pendingDeleteFile.path);
-        this.showConfirmDialog = false;
-        if (success) {
-            this.showToast(`已移动到回收站: ${this.pendingDeleteFile.filename}`, 'success');
-            this.loadTrashItems();
-            await this.startScan(false);
-        }
-        else {
-            this.showToast('删除失败', 'error');
-        }
-        this.pendingDeleteFile = null;
-    }
-    // 恢复文件
-    private async restoreFile(item: TrashItem) {
-        if (!this.deduplicationManager)
-            return;
-        const success = this.deduplicationManager.restoreFromTrash(item);
-        if (success) {
-            this.showToast(`已恢复: ${item.filename}`, 'success');
-            this.loadTrashItems();
-            await this.startScan(false);
-        }
-        else {
-            this.showToast('恢复失败', 'error');
-        }
-    }
-    // 永久删除单个
-    private permanentDeleteOne(item: TrashItem) {
-        if (!this.deduplicationManager)
-            return;
-        const success = this.deduplicationManager.permanentDelete(item);
-        if (success) {
-            this.showToast(`已永久删除: ${item.filename}`, 'success');
-            this.loadTrashItems();
-        }
-        else {
-            this.showToast('删除失败', 'error');
-        }
-    }
-    // 清空回收站
-    private clearTrash() {
-        if (!this.deduplicationManager)
-            return;
-        const count = this.deduplicationManager.clearTrash();
-        this.showConfirmDialog = false;
-        this.loadTrashItems();
-        if (count > 0) {
-            this.showToast(`已永久删除 ${count} 个文件`, 'success');
-        }
-    }
-    // 导入文件
-    private async importFiles() {
-        if (!this.deduplicationManager)
-            return;
-        this.isImporting = true;
-        try {
-            const documentPicker = new picker.DocumentViewPicker();
-            const selectOptions = new picker.DocumentSelectOptions();
-            selectOptions.maxSelectNumber = 100;
-            const uris = await documentPicker.select(selectOptions);
-            if (uris && uris.length > 0) {
-                let successCount = 0;
-                for (const uri of uris) {
-                    const filename = uri.split('/').pop() || `file_${Date.now()}`;
-                    const success = await this.deduplicationManager.importFileToFilesDir(uri, filename);
-                    if (success)
-                        successCount++;
-                }
-                this.showToast(`成功导入 ${successCount} 个文件`, 'success');
-                // 重新扫描
-                this.refreshKey++;
-                await this.startScan(false);
-            }
-        }
-        catch (error) {
-            console.error('导入文件失败:', error);
-            this.showToast('导入失败', 'error');
-        }
-        finally {
-            this.isImporting = false;
-        }
-    }
-    // 导入文件夹
-    private async importFolder() {
-        if (!this.deduplicationManager)
-            return;
-        this.isImporting = true;
-        try {
-            const documentPicker = new picker.DocumentViewPicker();
-            const selectOptions = new picker.DocumentSelectOptions();
-            selectOptions.maxSelectNumber = 200;
-            const uris = await documentPicker.select(selectOptions);
-            if (uris && uris.length > 0) {
-                let total: ImportDirectoryResult = { totalFiles: 0, importedFiles: 0, skippedFiles: 0 };
-                let hasImport = false;
-                for (const uri of uris) {
-                    const dirResult: ImportDirectoryResult | null = await this.deduplicationManager.importDirectoryToFilesDir(uri);
-                    if (dirResult) {
-                        total.totalFiles += dirResult.totalFiles;
-                        total.importedFiles += dirResult.importedFiles;
-                        total.skippedFiles += dirResult.skippedFiles;
-                        hasImport = true;
-                        continue;
-                    }
-                    const filename = uri.split('/').pop() || `file_${Date.now()}`;
-                    const success = await this.deduplicationManager.importFileToFilesDir(uri, filename);
-                    total.totalFiles += 1;
-                    if (success)
-                        total.importedFiles += 1;
-                    else
-                        total.skippedFiles += 1;
-                    hasImport = true;
-                }
-                if (!hasImport) {
-                    this.showToast('请选择文件夹', 'info');
-                    return;
-                }
-                const summary = total.skippedFiles > 0 ? `，失败 ${total.skippedFiles} 个` : '';
-                this.showToast(`成功导入 ${total.importedFiles}/${total.totalFiles} 个文件${summary}`, 'success');
-                this.refreshKey++;
-                await this.startScan(false);
-            }
-        }
-        catch (error) {
-            console.error('导入文件夹失败:', error);
-            this.showToast('导入失败', 'error');
-        }
-        finally {
-            this.isImporting = false;
-        }
-    }
-    // 显示提示消息
-    private showToast(message: string, type: 'success' | 'error' | 'info') {
+    // 显示消息提示
+    private showToast(message: string, type: string = 'success') {
         this.messageText = message;
         this.messageType = type;
         this.showMessage = true;
-        setTimeout(() => { this.showMessage = false; }, 3000);
+        setTimeout(() => {
+            this.showMessage = false;
+        }, 3000);
     }
-    private getMessageColor(): string {
-        switch (this.messageType) {
-            case 'success': return '#34C759';
-            case 'error': return '#FF3B30';
-            default: return '#007AFF';
-        }
-    }
-    private getDeduplicateStats(): DeduplicateStats {
-        let keep = 0, del = 0, saveSpace = 0;
-        for (const group of this.duplicateGroups) {
-            for (const file of group.files) {
-                if (file.selected)
-                    keep++;
+    // 执行全量扫描
+    private async performFullScan() {
+        if (!this.scanner || this.isScanning)
+            return;
+        this.isScanning = true;
+        this.isRealTimeScanning = true;
+        this.scanProgress = 0;
+        this.scanProgressText = '';
+        this.dynamicGroups = [];
+        this.displayGroups = []; // 清空显示列表
+        // 根据扫描模式显示不同提示
+        const modeHint = this.useWorkerScan ? '（Worker多线程模式）' : '（主线程异步模式）';
+        this.showToast(`正在扫描文件...${modeHint}`, 'info');
+        try {
+            if (this.scanner) {
+                // 创建回调对象
+                const callbacks: ScanCallbacks = {
+                    onProgress: (current: number, total: number) => {
+                        this.scanProgress = Math.floor((current / total) * 100);
+                        this.scanProgressText = `${current}/${total}`;
+                    },
+                    onGroupFound: (group: DuplicateGroup) => {
+                        // 检查是否已存在该组（更新）
+                        const existingIndex = this.dynamicGroups.findIndex((g: DuplicateGroup) => g.hash === group.hash);
+                        if (existingIndex >= 0) {
+                            // 更新已存在的组
+                            this.dynamicGroups[existingIndex] = group;
+                            this.dynamicGroups = this.dynamicGroups.slice().sort((a, b) => b.wasteSize - a.wasteSize);
+                        }
+                        else {
+                            // 插入新组并按 wasteSize 降序排序
+                            this.dynamicGroups = [...this.dynamicGroups, group]
+                                .sort((a, b) => b.wasteSize - a.wasteSize);
+                        }
+                        // 更新显示列表
+                        this.displayGroups = this.dynamicGroups;
+                        // 更新动态统计
+                        this.dynamicStats = {
+                            scannedFiles: this.scanProgressText.split('/')[0] ? parseInt(this.scanProgressText.split('/')[0]) : 0,
+                            duplicateGroups: this.dynamicGroups.length,
+                            totalDuplicates: this.dynamicGroups.reduce((sum, g) => sum + g.files.length, 0),
+                            totalWasteSize: this.dynamicGroups.reduce((sum, g) => sum + g.wasteSize, 0),
+                            totalWasteSizeReadable: this.formatFileSize(this.dynamicGroups.reduce((sum, g) => sum + g.wasteSize, 0))
+                        };
+                    }
+                };
+                // 完成回调
+                const onComplete = (result: ScanResult) => {
+                    this.scanResult = result;
+                    this.lastScanTime = this.scanner!.getLastScanTimeFormatted();
+                    this.isScanning = false;
+                    this.isRealTimeScanning = false;
+                    // 更新显示列表为最终结果
+                    if (this.scanResult) {
+                        this.displayGroups = this.scanResult.duplicateGroups;
+                    }
+                    if (this.scanResult.duplicateGroups.length === 0) {
+                        this.showToast('扫描完成，未发现重复文件', 'info');
+                    }
+                    else {
+                        const modeInfo = this.useWorkerScan ? '[Worker]' : '[主线程]';
+                        this.showToast(`${modeInfo} 扫描完成！发现 ${this.scanResult.duplicateGroups.length} 组重复文件，` +
+                            `可节省 ${this.scanResult.totalWasteSizeReadable} 空间`, 'success');
+                    }
+                };
+                // 根据开关选择扫描方式
+                if (this.useWorkerScan) {
+                    // 使用 Worker 多线程扫描
+                    this.scanner.fullScanWithWorker(callbacks, onComplete);
+                }
                 else {
-                    del++;
-                    saveSpace += file.size;
+                    // 使用主线程异步扫描
+                    this.scanner.fullScanAsync(callbacks, onComplete);
                 }
             }
         }
-        return { keep, deleteCount: del, saveSpace };
+        catch (error) {
+            this.isScanning = false;
+            this.isRealTimeScanning = false;
+            this.showToast(`扫描失败: ${error}`, 'error');
+        }
     }
-    private formatFileSize(bytes: number): string {
-        if (bytes === 0)
-            return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+    // 执行增量扫描
+    private async performIncrementalScan() {
+        if (!this.scanner || this.isScanning)
+            return;
+        this.isScanning = true;
+        this.showToast('正在执行增量扫描...', 'info');
+        try {
+            setTimeout(() => {
+                if (this.scanner) {
+                    this.scanResult = this.scanner.incrementalScan();
+                    this.lastScanTime = this.scanner.getLastScanTimeFormatted();
+                    this.isScanning = false;
+                    // 更新显示列表
+                    if (this.scanResult) {
+                        this.displayGroups = this.scanResult.duplicateGroups;
+                    }
+                    if (this.scanResult.changedFiles === 0) {
+                        this.showToast('增量扫描完成，文件无变化', 'info');
+                    }
+                    else {
+                        this.showToast(`增量扫描完成！检测到 ${this.scanResult.changedFiles} 个文件变更`, 'success');
+                    }
+                }
+            }, 100);
+        }
+        catch (error) {
+            this.isScanning = false;
+            this.showToast(`扫描失败: ${error}`, 'error');
+        }
+    }
+    // 一键去重
+    private performDeduplicateAll() {
+        if (!this.scanner)
+            return;
+        const deletedCount = this.scanner.deduplicateAll();
+        this.scanResult = this.scanner.fullScan();
+        // 更新显示列表
+        if (this.scanResult) {
+            this.displayGroups = this.scanResult.duplicateGroups;
+        }
+        this.showToast(`一键去重完成！已删除 ${deletedCount} 个重复文件`, 'success');
+        this.showConfirmDialog = false;
+    }
+    // 处理单个重复组
+    private performDeduplicateGroup() {
+        if (!this.scanner || !this.selectedGroupHash || !this.selectedKeepFile)
+            return;
+        const deletedCount = this.scanner.deduplicateGroup(this.selectedGroupHash, this.selectedKeepFile);
+        this.scanResult = this.scanner.fullScan();
+        // 更新显示列表
+        if (this.scanResult) {
+            this.displayGroups = this.scanResult.duplicateGroups;
+        }
+        this.showToast(`已删除 ${deletedCount} 个重复文件，保留 "${this.selectedKeepFile}"`, 'success');
+        this.showConfirmDialog = false;
+        this.expandedGroups = this.expandedGroups.filter(h => h !== this.selectedGroupHash);
+    }
+    // 切换组展开状态
+    private toggleGroup(hash: string) {
+        const index = this.expandedGroups.indexOf(hash);
+        if (index >= 0) {
+            this.expandedGroups = this.expandedGroups.filter(h => h !== hash);
+        }
+        else {
+            this.expandedGroups = this.expandedGroups.concat([hash]);
+        }
+    }
+    // 检查组是否展开
+    private isGroupExpanded(hash: string): boolean {
+        return this.expandedGroups.indexOf(hash) >= 0;
+    }
+    // 获取变更状态文字
+    private getChangeStatusText(group: DuplicateGroup): string {
+        if (!group.changeStatus)
+            return '';
+        switch (group.changeStatus) {
+            case 'new':
+                return `新增重复组 (+${group.changeCount})`;
+            case 'increased':
+                return `重复数增加 (+${group.changeCount})`;
+            case 'decreased':
+                return `重复数减少 (-${group.changeCount})`;
+            default:
+                return '';
+        }
+    }
+    // 获取变更状态颜色
+    private getChangeStatusColor(group: DuplicateGroup): string {
+        switch (group.changeStatus) {
+            case 'new':
+                return '#FF9500';
+            case 'increased':
+                return '#FF3B30';
+            case 'decreased':
+                return '#34C759';
+            default:
+                return '#8E8E93';
+        }
+    }
+    //新增index命名方式，按照组重复的字符命名
+    private getGroupNameByHash(group: DuplicateGroup): string {
+        // 取hash的前6-8个字符（通常足够唯一标识）
+        const hashPrefix = group.hash.substring(0, 8);
+        console.log("命名名称", hashPrefix);
+        console.log("hash类型", typeof group.hash);
+        return `重复组 [${hashPrefix}]`;
+    }
+    private getSimpleHashName(group: DuplicateGroup, index: number): string {
+        // 从复合hash中提取内容hash部分
+        const parts = group.hash.split('_');
+        if (parts.length >= 2) {
+            // parts[1] 是内容的第一个hash值
+            const contentHash = parts[1];
+            if (contentHash && contentHash.length >= 4) {
+                // 使用内容hash的前4个字符
+                return `[${contentHash.substring(0, 4).toUpperCase()}]`;
+            }
+        }
+        // 回退方案：使用文件数量
+        return `${index + 1}`;
     }
     initialRender() {
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Stack.create();
-            Stack.width('100%');
-            Stack.height('100%');
-        }, Stack);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Column.create();
             Column.width('100%');
@@ -646,54 +621,200 @@ export class DeduplicationTab extends ViewPU {
             Column.backgroundColor('#F5F5F5');
         }, Column);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
-            // 标题栏
-            Row.create();
-            // 标题栏
-            Row.width('100%');
-            // 标题栏
-            Row.padding({ left: 16, right: 16, top: 12, bottom: 8 });
-        }, Row);
+            // === 顶部标题和扫描信息 ===
+            Column.create();
+            // === 顶部标题和扫描信息 ===
+            Column.width('100%');
+            // === 顶部标题和扫描信息 ===
+            Column.padding({ left: 16, right: 16, top: 12, bottom: 8 });
+            // === 顶部标题和扫描信息 ===
+            Column.alignItems(HorizontalAlign.Start);
+        }, Column);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Text.create('📁 文件去重');
-            Text.fontSize(20);
+            Text.create('文件去重');
+            Text.fontSize(24);
             Text.fontWeight(FontWeight.Bold);
             Text.fontColor('#333333');
-            Text.layoutWeight(1);
+            Text.margin({ bottom: 8 });
         }, Text);
         Text.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
-            // 回收站按钮
-            Button.createWithLabel('🗑️ 回收站' + (this.trashItems.length > 0 ? ` (${this.trashItems.length})` : ''));
-            // 回收站按钮
-            Button.height(32);
-            // 回收站按钮
-            Button.fontSize(12);
-            // 回收站按钮
-            Button.fontColor(this.trashItems.length > 0 ? '#FF9500' : '#666666');
-            // 回收站按钮
-            Button.backgroundColor('#F0F0F0');
-            // 回收站按钮
-            Button.borderRadius(16);
-            // 回收站按钮
-            Button.onClick(() => {
-                this.loadTrashItems();
-                this.showTrashPanel = true;
+            Row.create();
+        }, Row);
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Text.create(`上次扫描: ${this.lastScanTime}`);
+            Text.fontSize(12);
+            Text.fontColor('#8E8E93');
+        }, Text);
+        Text.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Blank.create();
+        }, Blank);
+        Blank.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            // 扫描模式切换
+            Row.create();
+        }, Row);
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Text.create(this.useWorkerScan ? 'Worker多线程' : '主线程异步');
+            Text.fontSize(11);
+            Text.fontColor(this.useWorkerScan ? '#007AFF' : '#8E8E93');
+            Text.margin({ right: 6 });
+        }, Text);
+        Text.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Toggle.create({ type: ToggleType.Switch, isOn: this.useWorkerScan });
+            Toggle.width(40);
+            Toggle.height(22);
+            Toggle.selectedColor('#007AFF');
+            Toggle.onChange((isOn: boolean) => {
+                this.useWorkerScan = isOn;
+                this.scanModeText = isOn ? 'Worker多线程' : '主线程异步';
             });
+        }, Toggle);
+        Toggle.pop();
+        // 扫描模式切换
+        Row.pop();
+        Row.pop();
+        // === 顶部标题和扫描信息 ===
+        Column.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            // === 操作按钮区 ===
+            Row.create({ space: 10 });
+            // === 操作按钮区 ===
+            Row.width('100%');
+            // === 操作按钮区 ===
+            Row.padding({ left: 16, right: 16, bottom: 12 });
+        }, Row);
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Button.createWithLabel(this.isScanning ? '扫描中...' : '全量扫描');
+            Button.onClick(() => this.performFullScan());
+            Button.enabled(!this.isScanning);
+            Button.height(40);
+            Button.fontSize(14);
+            Button.backgroundColor(this.isScanning ? '#C7C7CC' : '#007AFF');
+            Button.fontColor(Color.White);
+            Button.borderRadius(8);
+            Button.layoutWeight(1);
         }, Button);
-        // 回收站按钮
         Button.pop();
-        // 标题栏
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Button.createWithLabel('增量扫描');
+            Button.onClick(() => this.performIncrementalScan());
+            Button.enabled(!this.isScanning && this.lastScanTime !== '从未扫描');
+            Button.height(40);
+            Button.fontSize(14);
+            Button.backgroundColor((!this.isScanning && this.lastScanTime !== '从未扫描') ? '#34C759' : '#C7C7CC');
+            Button.fontColor(Color.White);
+            Button.borderRadius(8);
+            Button.layoutWeight(1);
+        }, Button);
+        Button.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Button.createWithLabel('一键去重');
+            Button.onClick(() => {
+                if (this.scanResult && this.scanResult.duplicateGroups.length > 0) {
+                    this.confirmAction = 'dedup_all';
+                    this.showConfirmDialog = true;
+                }
+                else {
+                    this.showToast('请先执行扫描', 'info');
+                }
+            });
+            Button.enabled(!this.isScanning && this.scanResult !== null && this.scanResult.duplicateGroups.length > 0);
+            Button.height(40);
+            Button.fontSize(14);
+            Button.backgroundColor((!this.isScanning && this.scanResult !== null && this.scanResult.duplicateGroups.length > 0)
+                ? '#FF3B30' : '#C7C7CC');
+            Button.fontColor(Color.White);
+            Button.borderRadius(8);
+            Button.layoutWeight(1);
+        }, Button);
+        Button.pop();
+        // === 操作按钮区 ===
         Row.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             If.create();
-            // 消息提示
+            // === 扫描进度条 ===
+            if (this.isRealTimeScanning) {
+                this.ifElseBranchUpdateFunction(0, () => {
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Column.create();
+                        Column.width('100%');
+                        Column.padding({ left: 16, right: 16, top: 8, bottom: 12 });
+                        Column.backgroundColor('#F8F8F8');
+                        Column.borderRadius(12);
+                        Column.margin({ left: 16, right: 16, bottom: 12 });
+                    }, Column);
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Row.create();
+                        Row.width('100%');
+                        Row.margin({ bottom: 8 });
+                    }, Row);
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create('扫描进度');
+                        Text.fontSize(14);
+                        Text.fontWeight(FontWeight.Medium);
+                        Text.fontColor('#333333');
+                        Text.layoutWeight(1);
+                    }, Text);
+                    Text.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create(`${this.scanProgress}%`);
+                        Text.fontSize(14);
+                        Text.fontColor('#007AFF');
+                        Text.fontWeight(FontWeight.Bold);
+                    }, Text);
+                    Text.pop();
+                    Row.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Progress.create({ value: this.scanProgress, total: 100, type: ProgressType.Linear });
+                        Progress.color('#007AFF');
+                        Progress.backgroundColor('#E0E0E0');
+                        Progress.height(8);
+                        Progress.width('100%');
+                        Progress.borderRadius(4);
+                    }, Progress);
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        If.create();
+                        if (this.scanProgressText) {
+                            this.ifElseBranchUpdateFunction(0, () => {
+                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                    Text.create(`已扫描文件: ${this.scanProgressText}`);
+                                    Text.fontSize(12);
+                                    Text.fontColor('#8E8E93');
+                                    Text.margin({ top: 6 });
+                                }, Text);
+                                Text.pop();
+                            });
+                        }
+                        else {
+                            this.ifElseBranchUpdateFunction(1, () => {
+                            });
+                        }
+                    }, If);
+                    If.pop();
+                    Column.pop();
+                });
+            }
+            // === 消息提示 ===
+            else {
+                this.ifElseBranchUpdateFunction(1, () => {
+                });
+            }
+        }, If);
+        If.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            If.create();
+            // === 消息提示 ===
             if (this.showMessage) {
                 this.ifElseBranchUpdateFunction(0, () => {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Text.create(this.messageText);
                         Text.fontSize(14);
                         Text.fontColor('#FFFFFF');
-                        Text.backgroundColor(this.getMessageColor());
+                        Text.backgroundColor(this.messageType === 'success' ? '#34C759' :
+                            (this.messageType === 'error' ? '#FF3B30' : '#007AFF'));
                         Text.padding({ left: 16, right: 16, top: 8, bottom: 8 });
                         Text.borderRadius(8);
                         Text.margin({ left: 16, right: 16, bottom: 8 });
@@ -701,6 +822,7 @@ export class DeduplicationTab extends ViewPU {
                     Text.pop();
                 });
             }
+            // === 扫描结果统计 ===
             else {
                 this.ifElseBranchUpdateFunction(1, () => {
                 });
@@ -708,730 +830,766 @@ export class DeduplicationTab extends ViewPU {
         }, If);
         If.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Scroll.create();
-            Scroll.layoutWeight(1);
-            Scroll.scrollBar(BarState.Off);
-        }, Scroll);
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Column.create();
-        }, Column);
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            // 扫描操作区域
-            Column.create();
-            // 扫描操作区域
-            Column.width('100%');
-            // 扫描操作区域
-            Column.padding(16);
-            // 扫描操作区域
-            Column.backgroundColor('#FFFFFF');
-            // 扫描操作区域
-            Column.borderRadius(12);
-            // 扫描操作区域
-            Column.margin({ left: 12, right: 12, top: 8, bottom: 8 });
-        }, Column);
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Row.create();
-            Row.width('100%');
-            Row.margin({ bottom: 12 });
-        }, Row);
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Text.create('上次扫描: ');
-            Text.fontSize(13);
-            Text.fontColor('#999999');
-        }, Text);
-        Text.pop();
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Text.create(this.lastScanTimeText);
-            Text.fontSize(13);
-            Text.fontColor('#666666');
-        }, Text);
-        Text.pop();
-        Row.pop();
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Row.create();
-            Row.width('100%');
-        }, Row);
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Button.createWithLabel(this.isScanning ? '扫描中...' : '全量扫描');
-            Button.layoutWeight(1);
-            Button.height(44);
-            Button.fontSize(15);
-            Button.fontColor('#FFFFFF');
-            Button.backgroundColor(this.isScanning ? '#999999' : '#007AFF');
-            Button.borderRadius(10);
-            Button.enabled(!this.isScanning);
-            Button.onClick(() => { this.startScan(false); });
-        }, Button);
-        Button.pop();
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Button.createWithLabel('增量扫描');
-            Button.layoutWeight(1);
-            Button.height(44);
-            Button.fontSize(15);
-            Button.fontColor('#FFFFFF');
-            Button.backgroundColor(this.isScanning ? '#999999' : '#34C759');
-            Button.borderRadius(10);
-            Button.enabled(!this.isScanning && this.deduplicationManager?.getLastScanTime() !== 0);
-            Button.margin({ left: 12 });
-            Button.onClick(() => { this.startScan(true); });
-        }, Button);
-        Button.pop();
-        Row.pop();
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            // 导入文件按钮
-            Button.createWithLabel(this.isImporting ? '导入中...' : '📥 导入本地文件');
-            // 导入文件按钮
-            Button.width('100%');
-            // 导入文件按钮
-            Button.height(40);
-            // 导入文件按钮
-            Button.fontSize(14);
-            // 导入文件按钮
-            Button.fontColor('#007AFF');
-            // 导入文件按钮
-            Button.backgroundColor('#E8F4FF');
-            // 导入文件按钮
-            Button.borderRadius(10);
-            // 导入文件按钮
-            Button.margin({ top: 12 });
-            // 导入文件按钮
-            Button.enabled(!this.isImporting && !this.isScanning);
-            // 导入文件按钮
-            Button.onClick(() => { this.importFiles(); });
-        }, Button);
-        // 导入文件按钮
-        Button.pop();
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Button.createWithLabel(this.isImporting ? '导入中...' : '📂 导入本地文件夹');
-            Button.width('100%');
-            Button.height(40);
-            Button.fontSize(14);
-            Button.fontColor('#FF9500');
-            Button.backgroundColor('#FFF4E5');
-            Button.borderRadius(10);
-            Button.margin({ top: 8 });
-            Button.enabled(!this.isImporting && !this.isScanning);
-            Button.onClick(() => { this.importFolder(); });
-        }, Button);
-        Button.pop();
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
             If.create();
-            if (this.isIncrementalScan && this.hasScanned) {
+            // === 扫描结果统计 ===
+            if (this.scanResult || this.isRealTimeScanning) {
                 this.ifElseBranchUpdateFunction(0, () => {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Text.create(`📊 本次仅扫描变更文件 (${this.scannedFilesCount} 个)，新增重复 ${this.newDuplicateGroupsCount} 组`);
-                        Text.fontSize(12);
-                        Text.fontColor('#34C759');
-                        Text.margin({ top: 10 });
+                        // 根据扫描状态获取要显示的统计数据
+                        Row.create();
+                        // 根据扫描状态获取要显示的统计数据
+                        Row.width('100%');
+                        // 根据扫描状态获取要显示的统计数据
+                        Row.padding({ left: 16, right: 16, top: 8, bottom: 12 });
+                        // 根据扫描状态获取要显示的统计数据
+                        Row.backgroundColor(this.isRealTimeScanning ? '#FFF8E1' : '#F8F8F8');
+                        // 根据扫描状态获取要显示的统计数据
+                        Row.borderRadius(12);
+                        // 根据扫描状态获取要显示的统计数据
+                        Row.margin({ left: 16, right: 16, bottom: 12 });
+                    }, Row);
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Column.create();
+                        Column.layoutWeight(1);
+                    }, Column);
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create(`${this.isRealTimeScanning ? this.dynamicStats.scannedFiles : (this.scanResult?.scannedFiles || 0)}`);
+                        Text.fontSize(20);
+                        Text.fontWeight(FontWeight.Bold);
+                        Text.fontColor('#007AFF');
                     }, Text);
                     Text.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create(this.isRealTimeScanning ? '已扫描' : '扫描文件');
+                        Text.fontSize(11);
+                        Text.fontColor('#8E8E93');
+                    }, Text);
+                    Text.pop();
+                    Column.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Column.create();
+                        Column.layoutWeight(1);
+                    }, Column);
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create(`${this.isRealTimeScanning ? this.dynamicStats.duplicateGroups : (this.scanResult?.duplicateGroups.length || 0)}`);
+                        Text.fontSize(20);
+                        Text.fontWeight(FontWeight.Bold);
+                        Text.fontColor('#FF9500');
+                    }, Text);
+                    Text.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create('重复组');
+                        Text.fontSize(11);
+                        Text.fontColor('#8E8E93');
+                    }, Text);
+                    Text.pop();
+                    Column.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Column.create();
+                        Column.layoutWeight(1);
+                    }, Column);
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create(`${this.isRealTimeScanning ? this.dynamicStats.totalDuplicates : (this.scanResult?.totalDuplicates || 0)}`);
+                        Text.fontSize(20);
+                        Text.fontWeight(FontWeight.Bold);
+                        Text.fontColor('#FF3B30');
+                    }, Text);
+                    Text.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create('重复文件');
+                        Text.fontSize(11);
+                        Text.fontColor('#8E8E93');
+                    }, Text);
+                    Text.pop();
+                    Column.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Column.create();
+                        Column.layoutWeight(1);
+                    }, Column);
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create(this.isRealTimeScanning ? this.dynamicStats.totalWasteSizeReadable : (this.scanResult?.totalWasteSizeReadable || '0 B'));
+                        Text.fontSize(20);
+                        Text.fontWeight(FontWeight.Bold);
+                        Text.fontColor('#34C759');
+                    }, Text);
+                    Text.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create('可节省');
+                        Text.fontSize(11);
+                        Text.fontColor('#8E8E93');
+                    }, Text);
+                    Text.pop();
+                    Column.pop();
+                    // 根据扫描状态获取要显示的统计数据
+                    Row.pop();
                 });
             }
+            // === 重复文件列表 ===
             else {
                 this.ifElseBranchUpdateFunction(1, () => {
                 });
             }
         }, If);
         If.pop();
-        // 扫描操作区域
-        Column.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             If.create();
-            // 扫描结果统计
-            if (this.hasScanned) {
+            // === 重复文件列表 ===
+            if (!this.scanResult && !this.isRealTimeScanning) {
                 this.ifElseBranchUpdateFunction(0, () => {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Column.create();
                         Column.width('100%');
-                        Column.padding(16);
-                        Column.backgroundColor('#FFFFFF');
-                        Column.borderRadius(12);
-                        Column.margin({ left: 12, right: 12, bottom: 8 });
+                        Column.height(200);
+                        Column.justifyContent(FlexAlign.Center);
                     }, Column);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Text.create('扫描结果');
-                        Text.fontSize(16);
-                        Text.fontWeight(FontWeight.Medium);
-                        Text.fontColor('#333333');
-                        Text.width('100%');
-                        Text.margin({ bottom: 10 });
+                        Text.create('🔍');
+                        Text.fontSize(48);
+                        Text.margin({ bottom: 16 });
                     }, Text);
                     Text.pop();
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Row.create();
-                        Row.width('100%');
-                        Row.justifyContent(FlexAlign.SpaceBetween);
-                    }, Row);
-                    this.StatCard.bind(this)('总文件', `${this.totalFilesCount}`, '#007AFF');
-                    this.StatCard.bind(this)('重复组', `${this.duplicateGroupsCount}`, '#FF9500');
-                    this.StatCard.bind(this)('可节省', this.savableSpaceText, '#34C759');
-                    Row.pop();
+                        Text.create('点击"全量扫描"开始检测重复文件');
+                        Text.fontSize(14);
+                        Text.fontColor('#8E8E93');
+                    }, Text);
+                    Text.pop();
                     Column.pop();
                 });
             }
-            // 重复文件组列表
-            else {
+            else if (!this.isRealTimeScanning && this.scanResult && this.scanResult.duplicateGroups.length === 0) {
                 this.ifElseBranchUpdateFunction(1, () => {
-                });
-            }
-        }, If);
-        If.pop();
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            If.create();
-            // 重复文件组列表
-            if (this.hasScanned && this.duplicateGroups.length > 0) {
-                this.ifElseBranchUpdateFunction(0, () => {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Column.create();
                         Column.width('100%');
-                        Column.padding(16);
-                        Column.backgroundColor('#FFFFFF');
-                        Column.borderRadius(12);
-                        Column.margin({ left: 12, right: 12, bottom: 100 });
+                        Column.height(200);
+                        Column.justifyContent(FlexAlign.Center);
                     }, Column);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Row.create();
-                        Row.width('100%');
-                        Row.margin({ bottom: 12 });
-                    }, Row);
-                    this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Text.create('重复文件组');
-                        Text.fontSize(16);
-                        Text.fontWeight(FontWeight.Medium);
-                        Text.fontColor('#333333');
-                        Text.layoutWeight(1);
+                        Text.create('✅');
+                        Text.fontSize(48);
+                        Text.margin({ bottom: 16 });
                     }, Text);
                     Text.pop();
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Button.createWithLabel('一键去重');
-                        Button.height(32);
-                        Button.fontSize(13);
-                        Button.fontColor('#FFFFFF');
-                        Button.backgroundColor('#FF3B30');
-                        Button.borderRadius(16);
-                        Button.onClick(() => { this.prepareAutoDeduplicate(); });
-                    }, Button);
-                    Button.pop();
-                    Row.pop();
+                        Text.create('太棒了！没有发现重复文件');
+                        Text.fontSize(14);
+                        Text.fontColor('#8E8E93');
+                    }, Text);
+                    Text.pop();
+                    Column.pop();
+                });
+            }
+            else {
+                this.ifElseBranchUpdateFunction(2, () => {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        ForEach.create();
-                        const forEachItemGenFunction = _item => {
-                            const group = _item;
-                            this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                Column.create();
-                                Column.width('100%');
-                                Column.backgroundColor('#FFFAF0');
-                                Column.border({ width: 1, color: '#FF9500', radius: 10 });
-                                Column.margin({ bottom: 10 });
-                            }, Column);
-                            this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                Row.create();
-                                Row.width('100%');
-                                Row.padding(12);
-                                Row.onClick(() => { this.toggleGroupExpanded(group); });
-                            }, Row);
-                            this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                Text.create(group.expanded ? '▼' : '▶');
-                                Text.fontSize(14);
-                                Text.fontColor('#666666');
-                                Text.margin({ right: 8 });
-                            }, Text);
-                            Text.pop();
-                            this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                Column.create();
-                                Column.alignItems(HorizontalAlign.Start);
-                                Column.layoutWeight(1);
-                            }, Column);
-                            this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                Row.create();
-                            }, Row);
-                            this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                Text.create(`${group.files.length} 个相同文件`);
-                                Text.fontSize(14);
-                                Text.fontWeight(FontWeight.Medium);
-                                Text.fontColor('#333333');
-                            }, Text);
-                            Text.pop();
-                            this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                Text.create(`(${group.sizeReadable})`);
-                                Text.fontSize(12);
-                                Text.fontColor('#999999');
-                                Text.margin({ left: 8 });
-                            }, Text);
-                            Text.pop();
-                            Row.pop();
-                            this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                Text.create(`哈希: ${group.hash.substring(0, 16)}...`);
-                                Text.fontSize(11);
-                                Text.fontColor('#AAAAAA');
-                            }, Text);
-                            Text.pop();
-                            Column.pop();
-                            Row.pop();
-                            this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                If.create();
-                                if (group.expanded) {
-                                    this.ifElseBranchUpdateFunction(0, () => {
-                                        this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                            Column.create();
-                                            Column.padding({ left: 12, right: 12, bottom: 12 });
-                                        }, Column);
-                                        this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                            ForEach.create();
-                                            const forEachItemGenFunction = _item => {
-                                                const file = _item;
+                        If.create();
+                        // 动态排行榜提示
+                        if (this.isRealTimeScanning && this.dynamicGroups.length > 0) {
+                            this.ifElseBranchUpdateFunction(0, () => {
+                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                    Row.create();
+                                    Row.width('100%');
+                                    Row.padding({ left: 16, right: 16, bottom: 8 });
+                                }, Row);
+                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                    Text.create(`🏆 动态排行榜 - 按可释放空间降序排列`);
+                                    Text.fontSize(13);
+                                    Text.fontWeight(FontWeight.Medium);
+                                    Text.fontColor('#FF9500');
+                                }, Text);
+                                Text.pop();
+                                Row.pop();
+                            });
+                        }
+                        // 增量扫描提示
+                        else {
+                            this.ifElseBranchUpdateFunction(1, () => {
+                            });
+                        }
+                    }, If);
+                    If.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        If.create();
+                        // 增量扫描提示
+                        if (!this.isRealTimeScanning && this.scanResult && this.scanResult.isIncremental && this.scanResult.changedFiles > 0) {
+                            this.ifElseBranchUpdateFunction(0, () => {
+                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                    Row.create();
+                                    Row.width('100%');
+                                    Row.padding({ left: 16, right: 16, bottom: 8 });
+                                }, Row);
+                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                    Text.create(`📊 本次仅扫描变更文件，共 ${this.scanResult.changedFiles} 个文件有变化`);
+                                    Text.fontSize(12);
+                                    Text.fontColor('#FF9500');
+                                }, Text);
+                                Text.pop();
+                                Row.pop();
+                            });
+                        }
+                        else {
+                            this.ifElseBranchUpdateFunction(1, () => {
+                            });
+                        }
+                    }, If);
+                    If.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        If.create();
+                        if (this.displayGroups.length === 0 && this.isRealTimeScanning) {
+                            this.ifElseBranchUpdateFunction(0, () => {
+                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                    // 扫描中但还未发现重复组
+                                    Column.create();
+                                    // 扫描中但还未发现重复组
+                                    Column.width('100%');
+                                    // 扫描中但还未发现重复组
+                                    Column.height(200);
+                                    // 扫描中但还未发现重复组
+                                    Column.justifyContent(FlexAlign.Center);
+                                }, Column);
+                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                    Text.create('🔄');
+                                    Text.fontSize(48);
+                                    Text.margin({ bottom: 16 });
+                                }, Text);
+                                Text.pop();
+                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                    Text.create('正在扫描文件，寻找重复组...');
+                                    Text.fontSize(14);
+                                    Text.fontColor('#8E8E93');
+                                }, Text);
+                                Text.pop();
+                                // 扫描中但还未发现重复组
+                                Column.pop();
+                            });
+                        }
+                        else if (this.displayGroups.length > 0) {
+                            this.ifElseBranchUpdateFunction(1, () => {
+                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                    List.create({ space: 8 });
+                                    List.width('100%');
+                                    List.layoutWeight(1);
+                                    List.padding({ left: 16, right: 16 });
+                                }, List);
+                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                    ForEach.create();
+                                    const forEachItemGenFunction = (_item, index: number) => {
+                                        const group = _item;
+                                        {
+                                            const itemCreation = (elmtId, isInitialRender) => {
+                                                ViewStackProcessor.StartGetAccessRecordingFor(elmtId);
+                                                ListItem.create(deepRenderFunction, true);
+                                                if (!isInitialRender) {
+                                                    ListItem.pop();
+                                                }
+                                                ViewStackProcessor.StopGetAccessRecording();
+                                            };
+                                            const itemCreation2 = (elmtId, isInitialRender) => {
+                                                ListItem.create(deepRenderFunction, true);
+                                            };
+                                            const deepRenderFunction = (elmtId, isInitialRender) => {
+                                                itemCreation(elmtId, isInitialRender);
                                                 this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                    Column.create();
+                                                    Column.backgroundColor(Color.White);
+                                                    Column.borderRadius(12);
+                                                    Column.border({ width: 1, color: '#E0E0E0' });
+                                                    Column.transition({
+                                                        type: TransitionType.Insert,
+                                                        opacity: 0,
+                                                        translate: { x: 0, y: 50 }
+                                                    });
+                                                    Column.transition({
+                                                        type: TransitionType.Delete,
+                                                        opacity: 0,
+                                                        translate: { x: 0, y: -50 }
+                                                    });
+                                                }, Column);
+                                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                    // 组标题行
                                                     Row.create();
+                                                    // 组标题行
                                                     Row.width('100%');
-                                                    Row.padding({ left: 12, right: 12, top: 8, bottom: 8 });
-                                                    Row.backgroundColor(file.selected ? '#F0F8FF' : '#FAFAFA');
-                                                    Row.borderRadius(8);
-                                                    Row.margin({ bottom: 4 });
+                                                    // 组标题行
+                                                    Row.padding(12);
+                                                    // 组标题行
+                                                    Row.onClick(() => this.toggleGroup(group.hash));
                                                 }, Row);
-                                                this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                                    Checkbox.create();
-                                                    Checkbox.select(file.selected);
-                                                    Checkbox.onChange(() => { this.toggleFileSelection(group, file); });
-                                                    Checkbox.margin({ right: 10 });
-                                                }, Checkbox);
-                                                Checkbox.pop();
                                                 this.observeComponentCreation2((elmtId, isInitialRender) => {
                                                     Column.create();
                                                     Column.alignItems(HorizontalAlign.Start);
                                                     Column.layoutWeight(1);
                                                 }, Column);
                                                 this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                                    Text.create(file.filename);
-                                                    Text.fontSize(13);
-                                                    Text.fontWeight(FontWeight.Medium);
-                                                    Text.fontColor(file.selected ? '#007AFF' : '#333333');
-                                                    Text.maxLines(1);
-                                                    Text.textOverflow({ overflow: TextOverflow.Ellipsis });
-                                                }, Text);
-                                                Text.pop();
+                                                    Row.create();
+                                                }, Row);
                                                 this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                                    Text.create(file.path);
-                                                    Text.fontSize(10);
-                                                    Text.fontColor('#999999');
-                                                    Text.maxLines(1);
-                                                    Text.textOverflow({ overflow: TextOverflow.Ellipsis });
+                                                    // Text(`重复组 #${index + 1}`)
+                                                    Text.create(`加密Hash值${this.getSimpleHashName(group, index)}`);
+                                                    // Text(`重复组 #${index + 1}`)
+                                                    Text.fontSize(16);
+                                                    // Text(`重复组 #${index + 1}`)
+                                                    Text.fontWeight(FontWeight.Bold);
+                                                    // Text(`重复组 #${index + 1}`)
+                                                    Text.fontColor('#333333');
                                                 }, Text);
+                                                // Text(`重复组 #${index + 1}`)
                                                 Text.pop();
-                                                Column.pop();
                                                 this.observeComponentCreation2((elmtId, isInitialRender) => {
                                                     If.create();
-                                                    if (file.selected) {
+                                                    if (group.changeStatus) {
                                                         this.ifElseBranchUpdateFunction(0, () => {
                                                             this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                                                Text.create('保留');
+                                                                Text.create(this.getChangeStatusText(group));
                                                                 Text.fontSize(11);
-                                                                Text.fontColor('#FFFFFF');
-                                                                Text.backgroundColor('#34C759');
-                                                                Text.padding({ left: 8, right: 8, top: 3, bottom: 3 });
-                                                                Text.borderRadius(10);
+                                                                Text.fontColor(Color.White);
+                                                                Text.backgroundColor(this.getChangeStatusColor(group));
+                                                                Text.padding({ left: 6, right: 6, top: 2, bottom: 2 });
+                                                                Text.borderRadius(4);
+                                                                Text.margin({ left: 8 });
                                                             }, Text);
                                                             Text.pop();
                                                         });
                                                     }
                                                     else {
                                                         this.ifElseBranchUpdateFunction(1, () => {
-                                                            this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                                                Button.createWithLabel('删除');
-                                                                Button.height(26);
-                                                                Button.fontSize(11);
-                                                                Button.fontColor('#FFFFFF');
-                                                                Button.backgroundColor('#FF3B30');
-                                                                Button.borderRadius(13);
-                                                                Button.onClick(() => { this.deleteOneFile(file); });
-                                                            }, Button);
-                                                            Button.pop();
                                                         });
                                                     }
                                                 }, If);
                                                 If.pop();
                                                 Row.pop();
+                                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                    Text.create(`${group.files.length} 个重复文件 · 可节省 ${this.formatFileSize(group.wasteSize)}`);
+                                                    Text.fontSize(12);
+                                                    Text.fontColor('#8E8E93');
+                                                    Text.margin({ top: 4 });
+                                                }, Text);
+                                                Text.pop();
+                                                Column.pop();
+                                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                    Text.create(this.isGroupExpanded(group.hash) ? '▼' : '▶');
+                                                    Text.fontSize(14);
+                                                    Text.fontColor('#8E8E93');
+                                                }, Text);
+                                                Text.pop();
+                                                // 组标题行
+                                                Row.pop();
+                                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                    If.create();
+                                                    // 展开的文件列表
+                                                    if (this.isGroupExpanded(group.hash)) {
+                                                        this.ifElseBranchUpdateFunction(0, () => {
+                                                            this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                                Column.create({ space: 6 });
+                                                                Column.width('100%');
+                                                                Column.padding({ left: 12, right: 12, bottom: 12 });
+                                                            }, Column);
+                                                            this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                                ForEach.create();
+                                                                const forEachItemGenFunction = (_item, fileIndex: number) => {
+                                                                    const file = _item;
+                                                                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                                        Row.create();
+                                                                        Row.width('100%');
+                                                                        Row.padding({ left: 12, right: 12, top: 8, bottom: 8 });
+                                                                        Row.backgroundColor(fileIndex === 0 ? '#E8F5E9' : '#FFF8E1');
+                                                                        Row.borderRadius(8);
+                                                                    }, Row);
+                                                                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                                        Column.create();
+                                                                        Column.alignItems(HorizontalAlign.Start);
+                                                                        Column.layoutWeight(1);
+                                                                    }, Column);
+                                                                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                                        Row.create();
+                                                                    }, Row);
+                                                                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                                        If.create();
+                                                                        if (fileIndex === 0) {
+                                                                            this.ifElseBranchUpdateFunction(0, () => {
+                                                                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                                                    Text.create('保留');
+                                                                                    Text.fontSize(10);
+                                                                                    Text.fontColor(Color.White);
+                                                                                    Text.backgroundColor('#34C759');
+                                                                                    Text.padding({ left: 4, right: 4, top: 1, bottom: 1 });
+                                                                                    Text.borderRadius(4);
+                                                                                    Text.margin({ right: 6 });
+                                                                                }, Text);
+                                                                                Text.pop();
+                                                                            });
+                                                                        }
+                                                                        else {
+                                                                            this.ifElseBranchUpdateFunction(1, () => {
+                                                                            });
+                                                                        }
+                                                                    }, If);
+                                                                    If.pop();
+                                                                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                                        If.create();
+                                                                        if (file.isNew) {
+                                                                            this.ifElseBranchUpdateFunction(0, () => {
+                                                                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                                                    Text.create('新增');
+                                                                                    Text.fontSize(10);
+                                                                                    Text.fontColor(Color.White);
+                                                                                    Text.backgroundColor('#FF9500');
+                                                                                    Text.padding({ left: 4, right: 4, top: 1, bottom: 1 });
+                                                                                    Text.borderRadius(4);
+                                                                                    Text.margin({ right: 6 });
+                                                                                }, Text);
+                                                                                Text.pop();
+                                                                            });
+                                                                        }
+                                                                        else {
+                                                                            this.ifElseBranchUpdateFunction(1, () => {
+                                                                            });
+                                                                        }
+                                                                    }, If);
+                                                                    If.pop();
+                                                                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                                        Text.create(file.filename);
+                                                                        Text.fontSize(14);
+                                                                        Text.fontColor('#333333');
+                                                                        Text.maxLines(1);
+                                                                        Text.textOverflow({ overflow: TextOverflow.Ellipsis });
+                                                                    }, Text);
+                                                                    Text.pop();
+                                                                    Row.pop();
+                                                                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                                        Text.create(`${file.sizeReadable} · ${file.mtimeFormatted}`);
+                                                                        Text.fontSize(11);
+                                                                        Text.fontColor('#8E8E93');
+                                                                        Text.margin({ top: 2 });
+                                                                    }, Text);
+                                                                    Text.pop();
+                                                                    Column.pop();
+                                                                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                                        Row.create({ space: 4 });
+                                                                    }, Row);
+                                                                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                                        Button.createWithLabel('查看');
+                                                                        Button.onClick(() => {
+                                                                            this.viewFileContent(file.filename);
+                                                                        });
+                                                                        Button.height(28);
+                                                                        Button.fontSize(11);
+                                                                        Button.backgroundColor('#8E8E93');
+                                                                        Button.fontColor(Color.White);
+                                                                        Button.borderRadius(14);
+                                                                    }, Button);
+                                                                    Button.pop();
+                                                                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                                        If.create();
+                                                                        if (fileIndex !== 0) {
+                                                                            this.ifElseBranchUpdateFunction(0, () => {
+                                                                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                                                    Button.createWithLabel('保留此文件');
+                                                                                    Button.onClick(() => {
+                                                                                        this.selectedGroupHash = group.hash;
+                                                                                        this.selectedKeepFile = file.filename;
+                                                                                        this.confirmAction = 'dedup_group';
+                                                                                        this.showConfirmDialog = true;
+                                                                                    });
+                                                                                    Button.height(28);
+                                                                                    Button.fontSize(11);
+                                                                                    Button.backgroundColor('#007AFF');
+                                                                                    Button.fontColor(Color.White);
+                                                                                    Button.borderRadius(14);
+                                                                                }, Button);
+                                                                                Button.pop();
+                                                                            });
+                                                                        }
+                                                                        else {
+                                                                            this.ifElseBranchUpdateFunction(1, () => {
+                                                                            });
+                                                                        }
+                                                                    }, If);
+                                                                    If.pop();
+                                                                    Row.pop();
+                                                                    Row.pop();
+                                                                };
+                                                                this.forEachUpdateFunction(elmtId, group.files, forEachItemGenFunction, undefined, true, false);
+                                                            }, ForEach);
+                                                            ForEach.pop();
+                                                            this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                                // 快速操作按钮
+                                                                Row.create({ space: 10 });
+                                                                // 快速操作按钮
+                                                                Row.width('100%');
+                                                                // 快速操作按钮
+                                                                Row.padding({ top: 8 });
+                                                            }, Row);
+                                                            this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                                Button.createWithLabel('保留第一个，删除其他');
+                                                                Button.onClick(() => {
+                                                                    this.selectedGroupHash = group.hash;
+                                                                    this.selectedKeepFile = group.files[0].filename;
+                                                                    this.confirmAction = 'dedup_group';
+                                                                    this.showConfirmDialog = true;
+                                                                });
+                                                                Button.height(36);
+                                                                Button.fontSize(13);
+                                                                Button.backgroundColor('#FF3B30');
+                                                                Button.fontColor(Color.White);
+                                                                Button.borderRadius(8);
+                                                                Button.layoutWeight(1);
+                                                            }, Button);
+                                                            Button.pop();
+                                                            // 快速操作按钮
+                                                            Row.pop();
+                                                            Column.pop();
+                                                        });
+                                                    }
+                                                    else {
+                                                        this.ifElseBranchUpdateFunction(1, () => {
+                                                        });
+                                                    }
+                                                }, If);
+                                                If.pop();
+                                                Column.pop();
+                                                ListItem.pop();
                                             };
-                                            this.forEachUpdateFunction(elmtId, group.files, forEachItemGenFunction);
-                                        }, ForEach);
-                                        ForEach.pop();
-                                        Column.pop();
-                                    });
-                                }
-                                else {
-                                    this.ifElseBranchUpdateFunction(1, () => {
-                                    });
-                                }
-                            }, If);
-                            If.pop();
-                            Column.pop();
-                        };
-                        this.forEachUpdateFunction(elmtId, this.duplicateGroups, forEachItemGenFunction);
-                    }, ForEach);
-                    ForEach.pop();
-                    Column.pop();
-                });
-            }
-            // 无重复文件提示
-            else {
-                this.ifElseBranchUpdateFunction(1, () => {
-                });
-            }
-        }, If);
-        If.pop();
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            If.create();
-            // 无重复文件提示
-            if (this.hasScanned && this.duplicateGroups.length === 0) {
-                this.ifElseBranchUpdateFunction(0, () => {
-                    this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Column.create();
-                        Column.width('100%');
-                        Column.padding(40);
-                        Column.backgroundColor('#FFFFFF');
-                        Column.borderRadius(12);
-                        Column.margin({ left: 12, right: 12, bottom: 8 });
-                    }, Column);
-                    this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Text.create('✅');
-                        Text.fontSize(48);
-                        Text.margin({ bottom: 12 });
-                    }, Text);
-                    Text.pop();
-                    this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Text.create('太棒了！没有发现重复文件');
-                        Text.fontSize(16);
-                        Text.fontColor('#34C759');
-                        Text.fontWeight(FontWeight.Medium);
-                    }, Text);
-                    Text.pop();
-                    Column.pop();
-                });
-            }
-            else {
-                this.ifElseBranchUpdateFunction(1, () => {
-                });
-            }
-        }, If);
-        If.pop();
-        Column.pop();
-        Scroll.pop();
-        Column.pop();
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            If.create();
-            // 回收站面板
-            if (this.showTrashPanel) {
-                this.ifElseBranchUpdateFunction(0, () => {
-                    this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Stack.create();
-                        Stack.width('100%');
-                        Stack.height('100%');
-                    }, Stack);
-                    this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Column.create();
-                        Column.width('100%');
-                        Column.height('100%');
-                        Column.backgroundColor('rgba(0,0,0,0.5)');
-                        Column.onClick(() => { this.showTrashPanel = false; });
-                    }, Column);
-                    Column.pop();
-                    this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Column.create();
-                        Column.width('90%');
-                        Column.height('70%');
-                        Column.backgroundColor('#FFFFFF');
-                        Column.borderRadius(16);
-                    }, Column);
-                    this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Row.create();
-                        Row.width('100%');
-                        Row.padding(16);
-                    }, Row);
-                    this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Text.create('🗑️ 回收站');
-                        Text.fontSize(18);
-                        Text.fontWeight(FontWeight.Bold);
-                        Text.fontColor('#333333');
-                        Text.layoutWeight(1);
-                    }, Text);
-                    Text.pop();
-                    this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        If.create();
-                        if (this.trashItems.length > 0) {
-                            this.ifElseBranchUpdateFunction(0, () => {
-                                this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                    Button.createWithLabel('清空');
-                                    Button.height(28);
-                                    Button.fontSize(12);
-                                    Button.fontColor('#FF3B30');
-                                    Button.backgroundColor('#FFF0F0');
-                                    Button.borderRadius(14);
-                                    Button.onClick(() => {
-                                        this.confirmAction = 'clearTrash';
-                                        this.showConfirmDialog = true;
-                                    });
-                                }, Button);
-                                Button.pop();
-                            });
-                        }
-                        else {
-                            this.ifElseBranchUpdateFunction(1, () => {
-                            });
-                        }
-                    }, If);
-                    If.pop();
-                    this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Text.create('✕');
-                        Text.fontSize(20);
-                        Text.fontColor('#999999');
-                        Text.margin({ left: 12 });
-                        Text.onClick(() => { this.showTrashPanel = false; });
-                    }, Text);
-                    Text.pop();
-                    Row.pop();
-                    this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        If.create();
-                        if (this.trashItems.length === 0) {
-                            this.ifElseBranchUpdateFunction(0, () => {
-                                this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                    Column.create();
-                                    Column.width('100%');
-                                    Column.padding(40);
-                                }, Column);
-                                this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                    Text.create('📭');
-                                    Text.fontSize(48);
-                                    Text.margin({ bottom: 12 });
-                                }, Text);
-                                Text.pop();
-                                this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                    Text.create('回收站为空');
-                                    Text.fontSize(14);
-                                    Text.fontColor('#999999');
-                                }, Text);
-                                Text.pop();
-                                Column.pop();
-                            });
-                        }
-                        else {
-                            this.ifElseBranchUpdateFunction(1, () => {
-                                this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                    Scroll.create();
-                                    Scroll.layoutWeight(1);
-                                }, Scroll);
-                                this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                    Column.create();
-                                }, Column);
-                                this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                    ForEach.create();
-                                    const forEachItemGenFunction = _item => {
-                                        const item = _item;
-                                        this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                            Row.create();
-                                            Row.width('100%');
-                                            Row.padding(12);
-                                            Row.backgroundColor('#FAFAFA');
-                                            Row.borderRadius(8);
-                                            Row.margin({ bottom: 8, left: 16, right: 16 });
-                                        }, Row);
-                                        this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                            Column.create();
-                                            Column.alignItems(HorizontalAlign.Start);
-                                            Column.layoutWeight(1);
-                                        }, Column);
-                                        this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                            Text.create(item.filename);
-                                            Text.fontSize(14);
-                                            Text.fontColor('#333333');
-                                            Text.maxLines(1);
-                                            Text.textOverflow({ overflow: TextOverflow.Ellipsis });
-                                        }, Text);
-                                        Text.pop();
-                                        this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                            Text.create(`${item.sizeReadable} · 删除于 ${item.deleteTimeReadable}`);
-                                            Text.fontSize(11);
-                                            Text.fontColor('#999999');
-                                        }, Text);
-                                        Text.pop();
-                                        Column.pop();
-                                        this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                            Button.createWithLabel('恢复');
-                                            Button.height(28);
-                                            Button.fontSize(12);
-                                            Button.fontColor('#34C759');
-                                            Button.backgroundColor('#F0FFF0');
-                                            Button.borderRadius(14);
-                                            Button.onClick(() => { this.restoreFile(item); });
-                                        }, Button);
-                                        Button.pop();
-                                        this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                            Button.createWithLabel('删除');
-                                            Button.height(28);
-                                            Button.fontSize(12);
-                                            Button.fontColor('#FF3B30');
-                                            Button.backgroundColor('#FFF0F0');
-                                            Button.borderRadius(14);
-                                            Button.margin({ left: 8 });
-                                            Button.onClick(() => { this.permanentDeleteOne(item); });
-                                        }, Button);
-                                        Button.pop();
-                                        Row.pop();
+                                            this.observeComponentCreation2(itemCreation2, ListItem);
+                                            ListItem.pop();
+                                        }
                                     };
-                                    this.forEachUpdateFunction(elmtId, this.trashItems, forEachItemGenFunction);
+                                    this.forEachUpdateFunction(elmtId, this.displayGroups, forEachItemGenFunction, undefined, true, false);
                                 }, ForEach);
                                 ForEach.pop();
-                                Column.pop();
-                                Scroll.pop();
+                                List.pop();
+                            });
+                        }
+                        else {
+                            this.ifElseBranchUpdateFunction(2, () => {
                             });
                         }
                     }, If);
                     If.pop();
-                    Column.pop();
-                    Stack.pop();
-                });
-            }
-            // 确认对话框
-            else {
-                this.ifElseBranchUpdateFunction(1, () => {
                 });
             }
         }, If);
         If.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             If.create();
-            // 确认对话框
+            // === 确认对话框 ===
             if (this.showConfirmDialog) {
                 this.ifElseBranchUpdateFunction(0, () => {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Stack.create();
                         Stack.width('100%');
                         Stack.height('100%');
+                        Stack.backgroundColor('rgba(0, 0, 0, 0.5)');
+                        Stack.onClick(() => {
+                            this.showConfirmDialog = false;
+                        });
+                        Stack.position({ x: 0, y: 0 });
                     }, Stack);
-                    this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Column.create();
-                        Column.width('100%');
-                        Column.height('100%');
-                        Column.backgroundColor('rgba(0,0,0,0.5)');
-                        Column.onClick(() => { this.showConfirmDialog = false; });
-                    }, Column);
-                    Column.pop();
+                    Stack.pop();
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Column.create();
                         Column.width('85%');
                         Column.padding(24);
-                        Column.backgroundColor('#FFFFFF');
+                        Column.backgroundColor(Color.White);
                         Column.borderRadius(16);
+                        Column.position({ x: '7.5%', y: '30%' });
                     }, Column);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Text.create(this.confirmAction === 'deduplicate' ? '确认一键去重' :
-                            this.confirmAction === 'clearTrash' ? '确认清空回收站' : '确认删除');
-                        Text.fontSize(18);
+                        Text.create(this.confirmAction === 'dedup_all' ? '确认一键去重' : '确认删除重复文件');
+                        Text.fontSize(20);
                         Text.fontWeight(FontWeight.Bold);
                         Text.fontColor('#333333');
                         Text.margin({ bottom: 16 });
                     }, Text);
                     Text.pop();
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        If.create();
-                        if (this.confirmAction === 'deduplicate') {
-                            this.ifElseBranchUpdateFunction(0, () => {
-                                this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                    Column.create();
-                                    Column.margin({ bottom: 20 });
-                                }, Column);
-                                this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                    Text.create(`将移动 ${this.getDeduplicateStats().deleteCount} 个重复文件到回收站`);
-                                    Text.fontSize(14);
-                                    Text.fontColor('#666666');
-                                }, Text);
-                                Text.pop();
-                                this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                    Text.create(`保留 ${this.getDeduplicateStats().keep} 个文件`);
-                                    Text.fontSize(14);
-                                    Text.fontColor('#666666');
-                                }, Text);
-                                Text.pop();
-                                this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                    Text.create(`可节省空间: ${this.formatFileSize(this.getDeduplicateStats().saveSpace)}`);
-                                    Text.fontSize(14);
-                                    Text.fontColor('#34C759');
-                                    Text.margin({ top: 8 });
-                                }, Text);
-                                Text.pop();
-                                Column.pop();
-                            });
-                        }
-                        else if (this.confirmAction === 'clearTrash') {
-                            this.ifElseBranchUpdateFunction(1, () => {
-                                this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                    Text.create(`将永久删除回收站中的 ${this.trashItems.length} 个文件`);
-                                    Text.fontSize(14);
-                                    Text.fontColor('#666666');
-                                    Text.margin({ bottom: 20 });
-                                }, Text);
-                                Text.pop();
-                            });
-                        }
-                        else if (this.pendingDeleteFile) {
-                            this.ifElseBranchUpdateFunction(2, () => {
-                                this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                    Text.create(`确定删除 "${this.pendingDeleteFile.filename}" 吗？`);
-                                    Text.fontSize(14);
-                                    Text.fontColor('#666666');
-                                    Text.margin({ bottom: 20 });
-                                }, Text);
-                                Text.pop();
-                            });
-                        }
-                        else {
-                            this.ifElseBranchUpdateFunction(3, () => {
-                            });
-                        }
-                    }, If);
-                    If.pop();
-                    this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Text.create(this.confirmAction === 'clearTrash' ? '⚠️ 此操作不可恢复！' : '💡 可在回收站中恢复');
-                        Text.fontSize(13);
-                        Text.fontColor(this.confirmAction === 'clearTrash' ? '#FF3B30' : '#999999');
-                        Text.margin({ bottom: 20 });
+                        Text.create(this.confirmAction === 'dedup_all'
+                            ? `即将删除所有重复组中的多余文件，每组保留最早创建的文件。\n\n共 ${this.scanResult ? this.scanResult.duplicateGroups.length : 0} 组重复文件将被处理。\n\n删除的文件将移入回收站，可以恢复。`
+                            : `即将删除该组中除 "${this.selectedKeepFile}" 以外的所有文件。\n\n删除的文件将移入回收站，可以恢复。`);
+                        Text.fontSize(14);
+                        Text.fontColor('#666666');
+                        Text.textAlign(TextAlign.Center);
+                        Text.margin({ bottom: 24 });
                     }, Text);
                     Text.pop();
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Row.create();
+                        Row.create({ space: 16 });
                         Row.width('100%');
-                        Row.justifyContent(FlexAlign.SpaceBetween);
                     }, Row);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Button.createWithLabel('取消');
-                        Button.width('45%');
+                        Button.onClick(() => {
+                            this.showConfirmDialog = false;
+                        });
                         Button.height(44);
-                        Button.fontSize(15);
+                        Button.fontSize(16);
+                        Button.backgroundColor('#E0E0E0');
                         Button.fontColor('#333333');
-                        Button.backgroundColor('#E5E5E5');
-                        Button.borderRadius(10);
-                        Button.onClick(() => { this.showConfirmDialog = false; this.pendingDeleteFile = null; });
+                        Button.borderRadius(8);
+                        Button.layoutWeight(1);
                     }, Button);
                     Button.pop();
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Button.createWithLabel('确认');
-                        Button.width('45%');
-                        Button.height(44);
-                        Button.fontSize(15);
-                        Button.fontColor('#FFFFFF');
-                        Button.backgroundColor('#FF3B30');
-                        Button.borderRadius(10);
-                        Button.onClick(async () => {
-                            if (this.confirmAction === 'deduplicate')
-                                await this.executeDeduplicate();
-                            else if (this.confirmAction === 'clearTrash')
-                                this.clearTrash();
-                            else
-                                await this.confirmDeleteOneFile();
+                        Button.createWithLabel('确认删除');
+                        Button.onClick(() => {
+                            if (this.confirmAction === 'dedup_all') {
+                                this.performDeduplicateAll();
+                            }
+                            else {
+                                this.performDeduplicateGroup();
+                            }
                         });
+                        Button.height(44);
+                        Button.fontSize(16);
+                        Button.backgroundColor('#FF3B30');
+                        Button.fontColor(Color.White);
+                        Button.borderRadius(8);
+                        Button.layoutWeight(1);
                     }, Button);
                     Button.pop();
                     Row.pop();
                     Column.pop();
+                });
+            }
+            // === 文件内容查看对话框 ===
+            else {
+                this.ifElseBranchUpdateFunction(1, () => {
+                });
+            }
+        }, If);
+        If.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            If.create();
+            // === 文件内容查看对话框 ===
+            if (this.showFileContentDialog) {
+                this.ifElseBranchUpdateFunction(0, () => {
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Stack.create();
+                        Stack.width('100%');
+                        Stack.height('100%');
+                        Stack.backgroundColor('rgba(0, 0, 0, 0.5)');
+                        Stack.onClick(() => {
+                            this.showFileContentDialog = false;
+                        });
+                        Stack.position({ x: 0, y: 0 });
+                    }, Stack);
                     Stack.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Column.create();
+                        Column.width('90%');
+                        Column.backgroundColor(Color.White);
+                        Column.borderRadius(16);
+                        Column.position({ x: '5%', y: '10%' });
+                    }, Column);
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        // 标题栏
+                        Row.create();
+                        // 标题栏
+                        Row.width('100%');
+                        // 标题栏
+                        Row.padding({ left: 20, right: 20, top: 15, bottom: 15 });
+                        // 标题栏
+                        Row.border({ width: { bottom: 1 }, color: '#E0E0E0' });
+                    }, Row);
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create('文件内容');
+                        Text.fontSize(20);
+                        Text.fontWeight(FontWeight.Bold);
+                        Text.fontColor('#333333');
+                        Text.layoutWeight(1);
+                    }, Text);
+                    Text.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Button.createWithLabel('×');
+                        Button.fontSize(24);
+                        Button.fontColor('#666666');
+                        Button.backgroundColor(Color.Transparent);
+                        Button.onClick(() => {
+                            this.showFileContentDialog = false;
+                        });
+                    }, Button);
+                    Button.pop();
+                    // 标题栏
+                    Row.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        // 文件名
+                        Row.create();
+                        // 文件名
+                        Row.width('100%');
+                        // 文件名
+                        Row.padding({ left: 20, right: 20, top: 12 });
+                    }, Row);
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create('文件名:');
+                        Text.fontSize(14);
+                        Text.fontColor('#666666');
+                        Text.width('20%');
+                    }, Text);
+                    Text.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create(this.viewingFileName);
+                        Text.fontSize(14);
+                        Text.fontColor('#007AFF');
+                        Text.fontWeight(FontWeight.Medium);
+                        Text.maxLines(1);
+                        Text.textOverflow({ overflow: TextOverflow.Ellipsis });
+                        Text.width('80%');
+                    }, Text);
+                    Text.pop();
+                    // 文件名
+                    Row.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        // 文件内容
+                        Scroll.create();
+                        // 文件内容
+                        Scroll.width('100%');
+                        // 文件内容
+                        Scroll.height(300);
+                        // 文件内容
+                        Scroll.padding(16);
+                        // 文件内容
+                        Scroll.margin({ left: 20, right: 20, top: 12, bottom: 12 });
+                        // 文件内容
+                        Scroll.backgroundColor('#F8F8F8');
+                        // 文件内容
+                        Scroll.borderRadius(8);
+                    }, Scroll);
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create(this.viewingFileContent);
+                        Text.fontSize(13);
+                        Text.fontColor('#333333');
+                        Text.fontFamily('monospace');
+                        Text.width('100%');
+                    }, Text);
+                    Text.pop();
+                    // 文件内容
+                    Scroll.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        // 关闭按钮
+                        Button.createWithLabel('关闭');
+                        // 关闭按钮
+                        Button.onClick(() => {
+                            this.showFileContentDialog = false;
+                        });
+                        // 关闭按钮
+                        Button.width('90%');
+                        // 关闭按钮
+                        Button.height(44);
+                        // 关闭按钮
+                        Button.fontSize(16);
+                        // 关闭按钮
+                        Button.backgroundColor('#007AFF');
+                        // 关闭按钮
+                        Button.fontColor(Color.White);
+                        // 关闭按钮
+                        Button.borderRadius(10);
+                        // 关闭按钮
+                        Button.margin({ bottom: 20 });
+                    }, Button);
+                    // 关闭按钮
+                    Button.pop();
+                    Column.pop();
                 });
             }
             else {
@@ -1440,31 +1598,16 @@ export class DeduplicationTab extends ViewPU {
             }
         }, If);
         If.pop();
-        Stack.pop();
-    }
-    StatCard(label: string, value: string, color: string, parent = null) {
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Column.create();
-            Column.padding({ top: 12, bottom: 12, left: 16, right: 16 });
-            Column.backgroundColor('#F8F8F8');
-            Column.borderRadius(10);
-            Column.width('30%');
-        }, Column);
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Text.create(value);
-            Text.fontSize(18);
-            Text.fontWeight(FontWeight.Bold);
-            Text.fontColor(color);
-        }, Text);
-        Text.pop();
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Text.create(label);
-            Text.fontSize(12);
-            Text.fontColor('#999999');
-            Text.margin({ top: 4 });
-        }, Text);
-        Text.pop();
         Column.pop();
+    }
+    // 格式化文件大小
+    private formatFileSize(bytes: number): string {
+        if (bytes === 0)
+            return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
     }
     rerender() {
         this.updateDirtyElements();

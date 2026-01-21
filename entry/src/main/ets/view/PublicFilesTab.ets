@@ -606,7 +606,8 @@ export struct publicFilesTab {
             }
           })
         }
-        .height('100%')
+        .layoutWeight(1)
+        .padding({ left: 16, right: 16 })
       }
 
       // === 文件操作面板（居中弹出）===
@@ -909,7 +910,7 @@ export struct publicFilesTab {
       }
     }
     .width('100%')
-    .height('100%')
+    .layoutWeight(1)
     .backgroundColor('#F5F5F5')
   }
 }

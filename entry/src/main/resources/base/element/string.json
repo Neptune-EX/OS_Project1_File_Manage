@@ -42,7 +42,15 @@
     },
     {
       "name": "bar3",
-      "value": "文件去重"
+      "value": "Deduplication"
+    },
+    {
+      "name": "bar4",
+      "value": "Trash"
+    },
+    {
+      "name": "bar5",
+      "value": "Test Data"
     },
     {
       "name": "select_photo",
