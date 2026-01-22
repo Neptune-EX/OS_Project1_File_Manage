@@ -67,6 +67,50 @@
     {
       "name": "button4",
       "value": "读取test.txt文件内容"
+    },
+    {
+      "name": "bar6",
+      "value": "智能分类"
+    },
+    {
+      "name": "bar7",
+      "value": "知识库"
+    },
+    {
+      "name": "smart_classify",
+      "value": "智能分类"
+    },
+    {
+      "name": "knowledge_base",
+      "value": "AI知识库"
+    },
+    {
+      "name": "start_analysis",
+      "value": "开始分析"
+    },
+    {
+      "name": "analyzing",
+      "value": "分析中..."
+    },
+    {
+      "name": "refresh_list",
+      "value": "刷新列表"
+    },
+    {
+      "name": "search_docs",
+      "value": "搜索文档"
+    },
+    {
+      "name": "build_index",
+      "value": "构建索引"
+    },
+    {
+      "name": "knowledge_relations",
+      "value": "知识关联"
+    },
+    {
+      "name": "hot_keywords",
+      "value": "热门关键词"
     }
   ]
 }

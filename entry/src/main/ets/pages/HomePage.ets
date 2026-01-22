@@ -18,6 +18,8 @@ import { publicFilesTab } from '../view/PublicFilesTab';
 import { DeduplicationTab } from '../view/DeduplicationTab';
 import { TrashTab } from '../view/TrashTab';
 import { TestDataTab } from '../view/TestDataTab';
+import { SmartClassifyTab } from '../view/SmartClassifyTab';
+import { KnowledgeTab } from '../view/KnowledgeTab';
 
 @Entry
 @Component
@@ -98,6 +100,30 @@ struct HomePage {
         }
         .height('100%')
         .tabBar(new SubTabBarStyle($r('app.string.bar5'))
+          .indicator({marginTop : $r('app.float.default_8')})
+          .labelStyle({font : {size : $r('app.float.default_16')}})
+        )
+
+        TabContent() {
+          Scroll() {
+            SmartClassifyTab()
+          }
+          .height($r('app.float.default_680'))
+        }
+        .height('100%')
+        .tabBar(new SubTabBarStyle($r('app.string.bar6'))
+          .indicator({marginTop : $r('app.float.default_8')})
+          .labelStyle({font : {size : $r('app.float.default_16')}})
+        )
+
+        TabContent() {
+          Scroll() {
+            KnowledgeTab()
+          }
+          .height($r('app.float.default_680'))
+        }
+        .height('100%')
+        .tabBar(new SubTabBarStyle($r('app.string.bar7'))
           .indicator({marginTop : $r('app.float.default_8')})
           .labelStyle({font : {size : $r('app.float.default_16')}})
         )
