@@ -111,6 +111,14 @@
     {
       "name": "default_12",
       "value": "12vp"
+    },
+    {
+      "name": "default_14",
+      "value": "14vp"
+    },
+    {
+      "name": "default_150",
+      "value": "150vp"
     }
   ]
 }

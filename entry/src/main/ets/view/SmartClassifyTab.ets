@@ -1,14 +1,14 @@
 /**
- * 智能分类 Tab 页面
+ * 智能分类 Tab 页面（优化版）
  * 提供文档智能分类、摘要生成、关键词提取功能
- * 支持本地分类（基于关键词匹配）和 AI 分类（可选）
+ * 支持本地分类（基于关键词匹配）- 异步处理避免UI卡顿
  */
 
 import { fileIo } from '@kit.CoreFileKit';
 import { common } from '@kit.AbilityKit';
+import { util } from '@kit.ArkTS';
 import {
   DocumentCategory,
-  DocumentMetadata,
   getCategoryDisplayName
 } from '../common/types/AIDocTypes';
 import { SimilarityCalculator } from '../common/utils/SimilarityCalculator';
@@ -39,7 +39,8 @@ interface CategoryKeywords {
   keywords: string[];
 }
 
-interface GeneratedTypeLiteralInterface_1 {
+// 分类结果
+interface ClassificationResult {
   category: DocumentCategory;
   confidence: number;
 }
@@ -58,155 +59,196 @@ export struct SmartClassifyTab {
   @State showMessage: boolean = false;
   @State messageText: string = '';
   @State messageType: string = 'info';
+  @State analyzedCount: number = 0;
 
   private filesDir: string = '';
   private similarityCalculator: SimilarityCalculator | null = null;
+  private categoryColors: Map<DocumentCategory, string> = new Map();
+  private categoryRules: CategoryKeywords[] = [];
 
-  // 类别关键词规则（本地分类使用）
-  private categoryRules: CategoryKeywords[] = [
-    {
-      category: DocumentCategory.MEETING_NOTES,
-      keywords: ['会议', '讨论', '决议', '参会', '议题', '会议纪要', '纪要', '出席', '主持',
-        'meeting', 'minutes', 'discussion', 'attendees', 'agenda']
-    },
-    {
-      category: DocumentCategory.STUDY_NOTES,
-      keywords: ['学习', '笔记', '知识点', '总结', '复习', '课程', '教程', '概念', '定义',
-        'study', 'notes', 'learn', 'course', 'lesson', 'chapter']
-    },
-    {
-      category: DocumentCategory.PROJECT_REPORT,
-      keywords: ['项目', '报告', '进度', '计划', '里程碑', '需求', '设计', '开发', '测试',
-        'project', 'report', 'progress', 'milestone', 'requirement', 'development']
-    },
-    {
-      category: DocumentCategory.PERSONAL_DIARY,
-      keywords: ['日记', '心情', '感想', '今天', '生活', '感受', '记录', '日志',
-        'diary', 'journal', 'today', 'feeling', 'life', 'mood']
-    },
-    {
-      category: DocumentCategory.TODO_LIST,
-      keywords: ['待办', '任务', '清单', '计划', '事项', '完成', '进行中', '优先级',
-        'todo', 'task', 'list', 'plan', 'priority', 'done', 'pending']
-    },
-    {
-      category: DocumentCategory.TECHNICAL_DOC,
-      keywords: ['技术', '文档', '接口', 'API', '函数', '方法', '参数', '返回值', '代码',
-        'technical', 'documentation', 'interface', 'function', 'method', 'parameter']
-    }
-  ];
-
-  // 类别颜色映射
-  private categoryColors: Map<DocumentCategory, string> = new Map([
-    [DocumentCategory.MEETING_NOTES, '#FF9500'],
-    [DocumentCategory.STUDY_NOTES, '#007AFF'],
-    [DocumentCategory.PROJECT_REPORT, '#5856D6'],
-    [DocumentCategory.PERSONAL_DIARY, '#FF2D55'],
-    [DocumentCategory.TODO_LIST, '#34C759'],
-    [DocumentCategory.TECHNICAL_DOC, '#00C7BE'],
-    [DocumentCategory.OTHER, '#8E8E93']
-  ]);
-
-  aboutToAppear() {
+  aboutToAppear(): void {
     const context = this.getUIContext().getHostContext() as Context;
     const uiAbilityContext = context as common.UIAbilityContext;
     this.filesDir = uiAbilityContext.filesDir;
     this.similarityCalculator = SimilarityCalculator.getInstance(context);
-    this.loadFiles();
+
+    // 初始化类别颜色
+    this.initCategoryColors();
+
+    // 初始化类别规则
+    this.initCategoryRules();
+
+    // 延迟加载文件列表
+    setTimeout((): void => {
+      this.loadFilesAsync();
+    }, 200);
   }
 
-  // 加载文件列表
-  private async loadFiles() {
-    this.isLoading = true;
-    try {
-      const allFiles = fileIo.listFileSync(this.filesDir);
-      const txtFiles = allFiles.filter((f: string) => !f.startsWith('.') && f.endsWith('.txt'));
+  // 初始化类别颜色
+  private initCategoryColors(): void {
+    this.categoryColors.set(DocumentCategory.MEETING_NOTES, '#FF9500');
+    this.categoryColors.set(DocumentCategory.STUDY_NOTES, '#007AFF');
+    this.categoryColors.set(DocumentCategory.PROJECT_REPORT, '#5856D6');
+    this.categoryColors.set(DocumentCategory.PERSONAL_DIARY, '#FF2D55');
+    this.categoryColors.set(DocumentCategory.TODO_LIST, '#34C759');
+    this.categoryColors.set(DocumentCategory.TECHNICAL_DOC, '#00C7BE');
+    this.categoryColors.set(DocumentCategory.OTHER, '#8E8E93');
+  }
 
-      this.fileList = txtFiles.map((filename: string) => {
-        return {
-          filename: filename,
-          category: DocumentCategory.OTHER,
-          categoryName: '未分类',
-          confidence: 0,
-          keywords: [],
-          summary: '',
-          wordCount: 0,
-          isAnalyzed: false
-        } as FileAnalysis;
-      });
+  // 初始化类别规则
+  private initCategoryRules(): void {
+    this.categoryRules = [
+      {
+        category: DocumentCategory.MEETING_NOTES,
+        keywords: ['会议', '讨论', '决议', '参会', '议题', '会议纪要', '纪要', '出席', '主持',
+          'meeting', 'minutes', 'discussion', 'attendees', 'agenda']
+      },
+      {
+        category: DocumentCategory.STUDY_NOTES,
+        keywords: ['学习', '笔记', '知识点', '总结', '复习', '课程', '教程', '概念', '定义',
+          'study', 'notes', 'learn', 'course', 'lesson', 'chapter']
+      },
+      {
+        category: DocumentCategory.PROJECT_REPORT,
+        keywords: ['项目', '报告', '进度', '计划', '里程碑', '需求', '设计', '开发', '测试',
+          'project', 'report', 'progress', 'milestone', 'requirement', 'development']
+      },
+      {
+        category: DocumentCategory.PERSONAL_DIARY,
+        keywords: ['日记', '心情', '感想', '今天', '生活', '感受', '记录', '日志',
+          'diary', 'journal', 'today', 'feeling', 'life', 'mood']
+      },
+      {
+        category: DocumentCategory.TODO_LIST,
+        keywords: ['待办', '任务', '清单', '计划', '事项', '完成', '进行中', '优先级',
+          'todo', 'task', 'list', 'plan', 'priority', 'done', 'pending']
+      },
+      {
+        category: DocumentCategory.TECHNICAL_DOC,
+        keywords: ['技术', '文档', '接口', 'API', '函数', '方法', '参数', '返回值', '代码',
+          'technical', 'documentation', 'interface', 'function', 'method', 'parameter']
+      }
+    ];
+  }
 
-      console.log('[SmartClassifyTab] 加载文件:', this.fileList.length);
-    } catch (error) {
-      console.error('[SmartClassifyTab] 加载文件失败:', error);
-      this.showToast('加载文件失败', 'error');
+  // =============== 文件操作 ===============
+
+  // 异步加载文件列表
+  private async loadFilesAsync(): Promise<void> {
+    if (this.isLoading) {
+      return;
     }
-    this.isLoading = false;
+
+    this.isLoading = true;
+    this.fileList = [];
+    this.analyzedCount = 0;
+
+    try {
+      const maxFiles = 30;
+      const allFiles: string[] = fileIo.listFileSync(this.filesDir);
+      const txtFiles: string[] = allFiles.filter((f: string): boolean => {
+        return !f.startsWith('.') && f.endsWith('.txt');
+      }).slice(0, maxFiles);
+
+      if (allFiles.length > maxFiles) {
+        this.showToast(`文件过多，仅显示前${maxFiles}个`, 'warning');
+      }
+
+      // 分批创建文件对象
+      const batchSize = 5;
+      const tempList: FileAnalysis[] = [];
+
+      for (let i = 0; i < txtFiles.length; i += batchSize) {
+        const batch: string[] = txtFiles.slice(i, i + batchSize);
+        batch.forEach((filename: string): void => {
+          tempList.push({
+            filename: filename,
+            category: DocumentCategory.OTHER,
+            categoryName: '未分类',
+            confidence: 0,
+            keywords: [],
+            summary: '',
+            wordCount: 0,
+            isAnalyzed: false
+          });
+        });
+
+        this.fileList = tempList.slice();
+        await this.delay(50);
+      }
+
+      console.info('[SmartClassifyTab] 文件加载完成:', this.fileList.length);
+    } catch (error) {
+      console.error('[SmartClassifyTab] 加载文件失败:', JSON.stringify(error));
+      this.showToast('加载文件失败', 'error');
+    } finally {
+      this.isLoading = false;
+    }
   }
 
-  // 显示消息
-  private showToast(message: string, type: string = 'info') {
-    this.messageText = message;
-    this.messageType = type;
-    this.showMessage = true;
-    setTimeout(() => {
-      this.showMessage = false;
-    }, 3000);
-  }
-
-  // 读取文件内容
+  // 读取文件内容（优化版）
   private readFileContent(filename: string): string {
     try {
       const filePath = `${this.filesDir}/${filename}`;
-      const file = fileIo.openSync(filePath, fileIo.OpenMode.READ_ONLY);
       const stat = fileIo.statSync(filePath);
-
-      const maxSize = 50 * 1024;
+      const maxSize = 20 * 1024;
       const readSize = Math.min(stat.size, maxSize);
-      const buffer = new ArrayBuffer(readSize);
-      fileIo.readSync(file.fd, buffer);
-      fileIo.closeSync(file);
 
-      const uint8Array = new Uint8Array(buffer);
-      let content = '';
-      for (let i = 0; i < uint8Array.length; i++) {
-        content += String.fromCharCode(uint8Array[i]);
+      if (readSize === 0) {
+        return '';
       }
 
-      try {
-        return decodeURIComponent(escape(content));
-      } catch (e) {
-        return content;
-      }
+      // const arrayBuffer = new ArrayBuffer(readSize);
+      // const fd = fileIo.openSync(filePath, fileIo.OpenMode.READ_ONLY);
+      // fileIo.readSync(fd, arrayBuffer);
+      // fileIo.closeSync(fd);
+
+      const arrayBuffer = new ArrayBuffer(readSize);
+      // 打开文件，获取文件对象
+      const file = fileIo.openSync(filePath, fileIo.OpenMode.READ_ONLY);
+      // 从文件对象中获取文件描述符（fd）
+      const fd = file.fd;
+
+      // 使用文件描述符读取文件
+      fileIo.readSync(fd, arrayBuffer);
+      // 使用文件描述符关闭文件
+      fileIo.closeSync(fd);
+
+      const decoder = new util.TextDecoder('utf-8');
+      return decoder.decodeWithStream(new Uint8Array(arrayBuffer), { stream: false });
     } catch (error) {
-      console.error('[SmartClassifyTab] 读取文件失败:', filename, error);
+      console.error('[SmartClassifyTab] 读取文件失败:', filename, JSON.stringify(error));
       return '';
     }
   }
 
-  // 本地分类（基于关键词匹配）
-  private classifyLocal(content: string): GeneratedTypeLiteralInterface_1 {
+  // =============== 分析功能 ===============
+
+  // 本地分类
+  private classifyLocal(content: string): ClassificationResult {
+    if (content.length === 0) {
+      return { category: DocumentCategory.OTHER, confidence: 0.5 };
+    }
+
     const contentLower = content.toLowerCase();
     let bestCategory = DocumentCategory.OTHER;
     let bestScore = 0;
 
-    this.categoryRules.forEach((rule: CategoryKeywords) => {
+    this.categoryRules.forEach((rule: CategoryKeywords): void => {
       let score = 0;
-      rule.keywords.forEach((keyword: string) => {
+      rule.keywords.forEach((keyword: string): void => {
         if (contentLower.includes(keyword.toLowerCase())) {
           score += 1;
         }
       });
 
-      // 归一化分数
       const normalizedScore = score / rule.keywords.length;
-
       if (normalizedScore > bestScore) {
         bestScore = normalizedScore;
         bestCategory = rule.category;
       }
     });
 
-    // 如果没有足够匹配，标记为其他
     if (bestScore < 0.1) {
       bestCategory = DocumentCategory.OTHER;
       bestScore = 0.5;
@@ -218,104 +260,168 @@ export struct SmartClassifyTab {
     };
   }
 
-  // 提取关键词（本地）
-  private extractKeywordsLocal(content: string): string[] {
-    if (!this.similarityCalculator) return [];
+  // 提取关键词
+  private extractKeywords(content: string): string[] {
+    if (!this.similarityCalculator || content.length === 0) {
+      return [];
+    }
 
-    const terms = this.similarityCalculator.extractTerms(content);
-    return this.similarityCalculator.getTopKeywords(terms, 8);
+    try {
+      const terms = this.similarityCalculator.extractTerms(content);
+      return this.similarityCalculator.getTopKeywords(terms, 6);
+    } catch (error) {
+      console.error('[SmartClassifyTab] 提取关键词失败:', JSON.stringify(error));
+      return [];
+    }
   }
 
-  // 生成摘要（本地 - 取前几句）
-  private generateSummaryLocal(content: string): string {
-    // 按句子分割
-    const sentences = content.split(/[。！？\.\!\?]/);
-    const validSentences = sentences.filter((s: string) => s.trim().length > 10);
+  // 生成摘要
+  private generateSummary(content: string): string {
+    if (content.length === 0) {
+      return '';
+    }
 
-    // 取前 3 句作为摘要
+    const sentences: string[] = content.split(/[。！？\.\!\?]/);
+    const validSentences: string[] = sentences.filter((s: string): boolean => {
+      return s.trim().length > 10;
+    });
+
     const summaryParts: string[] = [];
-    for (let i = 0; i < Math.min(3, validSentences.length); i++) {
+    const maxSentences = Math.min(2, validSentences.length);
+    for (let i = 0; i < maxSentences; i++) {
       summaryParts.push(validSentences[i].trim());
     }
 
     let summary = summaryParts.join('。');
-    if (summary.length > 200) {
-      summary = summary.substring(0, 200) + '...';
+    if (summary.length > 150) {
+      summary = summary.substring(0, 150) + '...';
     }
 
     return summary;
   }
 
   // 分析单个文件
-  private analyzeFile(index: number): void {
+  private analyzeFile(index: number): FileAnalysis | null {
     const file = this.fileList[index];
-    const content = this.readFileContent(file.filename);
+    if (!file) {
+      return null;
+    }
 
-    if (!content || content.length === 0) {
+    try {
+      const content = this.readFileContent(file.filename);
+      if (!content || content.length < 10) {
+        return null;
+      }
+
+      const classification = this.classifyLocal(content);
+      const keywords = this.extractKeywords(content);
+      const summary = this.generateSummary(content);
+
+      return {
+        filename: file.filename,
+        category: classification.category,
+        categoryName: getCategoryDisplayName(classification.category),
+        confidence: classification.confidence,
+        keywords: keywords,
+        summary: summary,
+        wordCount: content.length,
+        isAnalyzed: true
+      };
+    } catch (error) {
+      console.error('[SmartClassifyTab] 分析文件失败:', file.filename, JSON.stringify(error));
+      return null;
+    }
+  }
+
+  // 批量分析文件
+  private async analyzeAllFiles(): Promise<void> {
+    if (this.isAnalyzing) {
       return;
     }
 
-    // 本地分类
-    const classification = this.classifyLocal(content);
-    const keywords = this.extractKeywordsLocal(content);
-    const summary = this.generateSummaryLocal(content);
-
-    // 更新文件分析结果
-    this.fileList[index] = {
-      filename: file.filename,
-      category: classification.category,
-      categoryName: getCategoryDisplayName(classification.category),
-      confidence: classification.confidence,
-      keywords: keywords,
-      summary: summary,
-      wordCount: content.length,
-      isAnalyzed: true
-    };
-
-    // 触发状态更新
-    this.fileList = this.fileList.slice();
-  }
-
-  // 分析所有文件
-  private async analyzeAllFiles() {
-    if (this.isAnalyzing) return;
-
     this.isAnalyzing = true;
     this.analysisProgress = 0;
+    this.analyzedCount = 0;
     this.showToast('开始分析文档...', 'info');
 
     const total = this.fileList.length;
-
-    for (let i = 0; i < total; i++) {
-      this.analysisProgress = Math.floor(((i + 1) / total) * 100);
-      this.analysisProgressText = `${i + 1}/${total}`;
-
-      this.analyzeFile(i);
-
-      // 小延迟避免 UI 卡顿
-      await new Promise<void>((resolve) => setTimeout(() => resolve(), 50));
+    if (total === 0) {
+      this.isAnalyzing = false;
+      return;
     }
 
-    this.isAnalyzing = false;
-    this.showToast(`分析完成！共分析 ${total} 个文件`, 'success');
+    try {
+      const batchSize = 2;
+      const delayBetweenBatches = 150;
+      let analyzed = 0;
+
+      for (let i = 0; i < total; i += batchSize) {
+        const endIndex = Math.min(i + batchSize, total);
+
+        for (let j = i; j < endIndex; j++) {
+          const result = this.analyzeFile(j);
+          if (result) {
+            this.fileList[j] = result;
+            analyzed++;
+            this.analyzedCount = analyzed;
+          }
+
+          this.analysisProgress = Math.floor(((j + 1) / total) * 100);
+          this.analysisProgressText = `${j + 1}/${total}`;
+        }
+
+        this.fileList = this.fileList.slice();
+        await this.delay(delayBetweenBatches);
+      }
+
+      this.showToast(`分析完成！共分析 ${analyzed} 个文件`, 'success');
+    } catch (error) {
+      console.error('[SmartClassifyTab] 分析过程出错:', JSON.stringify(error));
+      this.showToast('分析过程出错', 'error');
+    } finally {
+      this.isAnalyzing = false;
+    }
+  }
+
+  // =============== UI辅助方法 ===============
+
+  // 延迟函数
+  private delay(ms: number): Promise<void> {
+    return new Promise<void>((resolve: (value: void) => void): void => {
+      setTimeout((): void => {
+        resolve();
+      }, ms);
+    });
+  }
+
+  // 显示提示消息
+  private showToast(message: string, type: string): void {
+    this.messageText = message;
+    this.messageType = type;
+    this.showMessage = true;
+    setTimeout((): void => {
+      this.showMessage = false;
+    }, 3000);
   }
 
   // 获取过滤后的文件列表
   private getFilteredFiles(): FileAnalysis[] {
-    let filtered = this.fileList;
+    let filtered: FileAnalysis[] = this.fileList;
 
-    // 按类别过滤
     if (this.selectedCategory !== null) {
-      filtered = filtered.filter((f: FileAnalysis) => f.category === this.selectedCategory);
+      filtered = filtered.filter((f: FileAnalysis): boolean => {
+        return f.category === this.selectedCategory;
+      });
     }
 
-    // 按关键词搜索
     if (this.searchKeyword.trim().length > 0) {
       const keyword = this.searchKeyword.toLowerCase();
-      filtered = filtered.filter((f: FileAnalysis) => {
-        const nameMatch = f.filename.toLowerCase().includes(keyword);
-        const keywordMatch = f.keywords.some((k: string) => k.toLowerCase().includes(keyword));
-        const summaryMatch = f.summary.toLowerCase().includes(keyword);
+      filtered = filtered.filter((f: FileAnalysis): boolean => {
+        const nameMatch: boolean = f.filename.toLowerCase().includes(keyword);
+        const keywordMatch: boolean = f.keywords.some((k: string): boolean => {
+          return k.toLowerCase().includes(keyword);
+        });
+        const summaryMatch: boolean = f.summary.toLowerCase().includes(keyword);
         return nameMatch || keywordMatch || summaryMatch;
       });
     }
@@ -325,33 +431,42 @@ export struct SmartClassifyTab {
 
   // 获取类别统计
   private getCategoryStats(): CategoryStat[] {
-    const stats = new Map<DocumentCategory, number>();
+    const stats: Map<DocumentCategory, number> = new Map<DocumentCategory, number>();
 
-    this.fileList.forEach((file: FileAnalysis) => {
+    this.fileList.forEach((file: FileAnalysis): void => {
       if (file.isAnalyzed) {
-        const count = stats.get(file.category) || 0;
-        stats.set(file.category, count + 1);
+        const count: number | undefined = stats.get(file.category);
+        stats.set(file.category, (count || 0) + 1);
       }
     });
 
     const result: CategoryStat[] = [];
-    stats.forEach((count: number, category: DocumentCategory) => {
+    stats.forEach((count: number, category: DocumentCategory): void => {
+      const color: string | undefined = this.categoryColors.get(category);
       result.push({
         category: category,
         name: getCategoryDisplayName(category),
         count: count,
-        color: this.categoryColors.get(category) || '#8E8E93'
+        color: color || '#8E8E93'
       });
     });
 
-    // 按数量排序
-    result.sort((a, b) => b.count - a.count);
+    result.sort((a: CategoryStat, b: CategoryStat): number => {
+      return b.count - a.count;
+    });
+
     return result;
   }
 
   // 获取已分析文件数
   private getAnalyzedCount(): number {
-    return this.fileList.filter((f: FileAnalysis) => f.isAnalyzed).length;
+    return this.analyzedCount;
+  }
+
+  // 获取类别颜色
+  private getCategoryColor(category: DocumentCategory): string {
+    const color: string | undefined = this.categoryColors.get(category);
+    return color || '#8E8E93';
   }
 
   build() {
@@ -372,10 +487,12 @@ export struct SmartClassifyTab {
       .padding({ left: 16, right: 16, top: 12, bottom: 8 })
       .alignItems(HorizontalAlign.Start)
 
-      // 操作按钮区
+      // 操作按钮
       Row({ space: 10 }) {
         Button(this.isAnalyzing ? '分析中...' : '开始分析')
-          .onClick(() => this.analyzeAllFiles())
+          .onClick((): void => {
+            this.analyzeAllFiles();
+          })
           .enabled(!this.isAnalyzing && this.fileList.length > 0)
           .height(40)
           .fontSize(14)
@@ -385,7 +502,9 @@ export struct SmartClassifyTab {
           .layoutWeight(1)
 
         Button('刷新列表')
-          .onClick(() => this.loadFiles())
+          .onClick((): void => {
+            this.loadFilesAsync();
+          })
           .enabled(!this.isLoading && !this.isAnalyzing)
           .height(40)
           .fontSize(14)
@@ -467,7 +586,7 @@ export struct SmartClassifyTab {
             .backgroundColor(this.selectedCategory === null ? '#007AFF' : '#F0F0F0')
             .borderRadius(10)
             .justifyContent(FlexAlign.Center)
-            .onClick(() => {
+            .onClick((): void => {
               this.selectedCategory = null;
             })
 
@@ -488,8 +607,12 @@ export struct SmartClassifyTab {
               .backgroundColor(this.selectedCategory === stat.category ? stat.color : '#F0F0F0')
               .borderRadius(10)
               .justifyContent(FlexAlign.Center)
-              .onClick(() => {
-                this.selectedCategory = this.selectedCategory === stat.category ? null : stat.category;
+              .onClick((): void => {
+                if (this.selectedCategory === stat.category) {
+                  this.selectedCategory = null;
+                } else {
+                  this.selectedCategory = stat.category;
+                }
               })
             })
           }
@@ -510,9 +633,10 @@ export struct SmartClassifyTab {
           .backgroundColor('#F0F0F0')
           .borderRadius(8)
           .padding({ left: 12, right: 12 })
-          .onChange((value: string) => {
+          .onChange((value: string): void => {
             this.searchKeyword = value;
           })
+          .type(InputType.Normal)
 
         if (this.searchKeyword.length > 0) {
           Button('清除')
@@ -522,7 +646,7 @@ export struct SmartClassifyTab {
             .fontColor('#333333')
             .borderRadius(8)
             .margin({ left: 8 })
-            .onClick(() => {
+            .onClick((): void => {
               this.searchKeyword = '';
             })
         }
@@ -560,12 +684,11 @@ export struct SmartClassifyTab {
             ListItem() {
               Column() {
                 Row() {
-                  // 类别标签
                   if (file.isAnalyzed) {
                     Text(file.categoryName)
                       .fontSize(10)
                       .fontColor(Color.White)
-                      .backgroundColor(this.categoryColors.get(file.category) || '#8E8E93')
+                      .backgroundColor(this.getCategoryColor(file.category))
                       .padding({ left: 6, right: 6, top: 2, bottom: 2 })
                       .borderRadius(4)
                       .margin({ right: 8 })
@@ -587,7 +710,6 @@ export struct SmartClassifyTab {
                 }
                 .width('100%')
 
-                // 关键词
                 if (file.isAnalyzed && file.keywords.length > 0) {
                   Row() {
                     ForEach(file.keywords.slice(0, 4), (keyword: string) => {
@@ -609,7 +731,6 @@ export struct SmartClassifyTab {
                   .margin({ top: 6 })
                 }
 
-                // 摘要
                 if (file.isAnalyzed && file.summary.length > 0) {
                   Text(file.summary)
                     .fontSize(12)
@@ -620,7 +741,6 @@ export struct SmartClassifyTab {
                     .width('100%')
                 }
 
-                // 统计信息
                 if (file.isAnalyzed) {
                   Row() {
                     Text(`${file.wordCount} 字`)
@@ -636,7 +756,7 @@ export struct SmartClassifyTab {
               .backgroundColor(Color.White)
               .borderRadius(12)
               .border({ width: 1, color: '#E0E0E0' })
-              .onClick(() => {
+              .onClick((): void => {
                 this.selectedFile = file;
                 this.showFileDetail = true;
               })
@@ -654,13 +774,12 @@ export struct SmartClassifyTab {
           .width('100%')
           .height('100%')
           .backgroundColor('rgba(0, 0, 0, 0.5)')
-          .onClick(() => {
+          .onClick((): void => {
             this.showFileDetail = false;
           })
           .position({ x: 0, y: 0 })
 
         Column() {
-          // 标题
           Row() {
             Text('文件详情')
               .fontSize(20)
@@ -672,7 +791,7 @@ export struct SmartClassifyTab {
               .fontSize(24)
               .fontColor('#666666')
               .backgroundColor(Color.Transparent)
-              .onClick(() => {
+              .onClick((): void => {
                 this.showFileDetail = false;
               })
           }
@@ -682,63 +801,66 @@ export struct SmartClassifyTab {
 
           Scroll() {
             Column() {
-              // 文件名
               Row() {
                 Text('文件名')
                   .fontSize(14)
                   .fontColor('#666666')
                   .width(80)
-                Text(this.selectedFile!.filename)
-                  .fontSize(14)
-                  .fontColor('#333333')
-                  .layoutWeight(1)
+                if (this.selectedFile) {
+                  Text(this.selectedFile.filename)
+                    .fontSize(14)
+                    .fontColor('#333333')
+                    .layoutWeight(1)
+                }
               }
               .width('100%')
               .margin({ bottom: 12 })
 
-              // 类别
               Row() {
                 Text('分类')
                   .fontSize(14)
                   .fontColor('#666666')
                   .width(80)
-                Text(this.selectedFile!.categoryName)
-                  .fontSize(14)
-                  .fontColor(Color.White)
-                  .backgroundColor(this.categoryColors.get(this.selectedFile!.category) || '#8E8E93')
-                  .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-                  .borderRadius(6)
+                if (this.selectedFile) {
+                  Text(this.selectedFile.categoryName)
+                    .fontSize(14)
+                    .fontColor(Color.White)
+                    .backgroundColor(this.getCategoryColor(this.selectedFile.category))
+                    .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+                    .borderRadius(6)
+                }
               }
               .width('100%')
               .margin({ bottom: 12 })
 
-              // 置信度
               Row() {
                 Text('置信度')
                   .fontSize(14)
                   .fontColor('#666666')
                   .width(80)
-                Text(`${(this.selectedFile!.confidence * 100).toFixed(1)}%`)
-                  .fontSize(14)
-                  .fontColor('#007AFF')
+                if (this.selectedFile) {
+                  Text(`${(this.selectedFile.confidence * 100).toFixed(1)}%`)
+                    .fontSize(14)
+                    .fontColor('#007AFF')
+                }
               }
               .width('100%')
               .margin({ bottom: 12 })
 
-              // 字数
               Row() {
                 Text('字数')
                   .fontSize(14)
                   .fontColor('#666666')
                   .width(80)
-                Text(`${this.selectedFile!.wordCount}`)
-                  .fontSize(14)
-                  .fontColor('#333333')
+                if (this.selectedFile) {
+                  Text(`${this.selectedFile.wordCount}`)
+                    .fontSize(14)
+                    .fontColor('#333333')
+                }
               }
               .width('100%')
               .margin({ bottom: 12 })
 
-              // 关键词
               Text('关键词')
                 .fontSize(14)
                 .fontColor('#666666')
@@ -746,42 +868,44 @@ export struct SmartClassifyTab {
                 .margin({ bottom: 8 })
 
               Flex({ wrap: FlexWrap.Wrap }) {
-                ForEach(this.selectedFile!.keywords, (keyword: string) => {
-                  Text(keyword)
-                    .fontSize(12)
-                    .fontColor('#333333')
-                    .backgroundColor('#F0F0F0')
-                    .padding({ left: 10, right: 10, top: 6, bottom: 6 })
-                    .borderRadius(16)
-                    .margin({ right: 8, bottom: 8 })
-                })
+                if (this.selectedFile) {
+                  ForEach(this.selectedFile.keywords, (keyword: string) => {
+                    Text(keyword)
+                      .fontSize(12)
+                      .fontColor('#333333')
+                      .backgroundColor('#F0F0F0')
+                      .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+                      .borderRadius(16)
+                      .margin({ right: 8, bottom: 8 })
+                  })
+                }
               }
               .width('100%')
               .margin({ bottom: 12 })
 
-              // 摘要
               Text('摘要')
                 .fontSize(14)
                 .fontColor('#666666')
                 .width('100%')
                 .margin({ bottom: 8 })
 
-              Text(this.selectedFile!.summary || '暂无摘要')
-                .fontSize(14)
-                .fontColor('#333333')
-                .width('100%')
-                .padding(12)
-                .backgroundColor('#F8F8F8')
-                .borderRadius(8)
+              if (this.selectedFile) {
+                Text(this.selectedFile.summary || '暂无摘要')
+                  .fontSize(14)
+                  .fontColor('#333333')
+                  .width('100%')
+                  .padding(12)
+                  .backgroundColor('#F8F8F8')
+                  .borderRadius(8)
+              }
             }
             .width('100%')
             .padding(20)
           }
           .layoutWeight(1)
 
-          // 关闭按钮
           Button('关闭')
-            .onClick(() => {
+            .onClick((): void => {
               this.showFileDetail = false;
             })
             .width('90%')

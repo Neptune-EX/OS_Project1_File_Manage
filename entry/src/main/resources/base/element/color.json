@@ -24,6 +24,9 @@
     {
       "name": "delete_button",
       "value": "#FF3B30"
+    },{
+      "name": "divider_color",
+      "value": "#33000000"
     }
   ]
 }
