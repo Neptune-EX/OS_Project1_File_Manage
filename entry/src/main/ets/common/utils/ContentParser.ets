@@ -5,11 +5,9 @@
 
 import { fileIo } from '@kit.CoreFileKit';
 import { common } from '@kit.AbilityKit';
+import { zlib } from '@kit.BasicServicesKit';
 import * as mammoth from "@ohos/mammoth";
-//华为原生第三方库，使用 ohpm install @ohos/mammoth 指令安装
-
-// import { pdfService } from '@kit.PDFKit';  // Not working on X86
-// import { image } from '@kit.ImageKit';
+import { pdfService } from '@kit.PDFKit';  // ARM 真机可用
 
 // 解析结果接口
 export interface ParseResult {
@@ -213,7 +211,7 @@ export class ContentParser {
 
   /**
    * 增强的 PDF 文本提取器
-   * 支持 FlateDecode 解压、CMap 字符映射、多种文本提取策略
+   * 支持多种文本提取策略
    */
   private async extractTextWithPDF(filePath: string): Promise<string> {
     try {
@@ -237,32 +235,36 @@ export class ContentParser {
 
       console.log(`[ContentParser] PDF文件读取成功,大小: ${readSize} bytes`);
 
-      let extractedText = '';
+      let allExtractedTexts: string[] = [];
 
-      // 方法 1: 尝试解压 FlateDecode 流并提取文本
-      extractedText = await this.extractFromStreams(uint8Array, pdfContent);
-
-      // 方法 2: 提取 BT...ET 文本块
-      if (extractedText.trim().length < 50) {
-        const btText = this.extractFromTextBlocks(pdfContent);
-        if (btText.length > extractedText.length) {
-          extractedText = btText;
-        }
+      // 方法 1: 提取 BT...ET 文本块
+      const btText = this.extractFromTextBlocks(pdfContent);
+      if (btText.length > 0) {
+        allExtractedTexts.push(btText);
       }
 
-      // 方法 3: 提取所有括号内文本
-      if (extractedText.trim().length < 50) {
-        const fallbackText = this.extractFallbackText(pdfContent);
-        if (fallbackText.length > extractedText.length) {
-          extractedText = fallbackText;
-        }
-      }
-
-      // 方法 4: 提取 Unicode 文本 (针对中文 PDF)
+      // 方法 2: 提取 Unicode/UTF-16 文本 (针对中文 PDF)
       const unicodeText = this.extractUnicodeText(pdfContent);
       if (unicodeText.length > 0) {
-        extractedText = extractedText + ' ' + unicodeText;
+        allExtractedTexts.push(unicodeText);
       }
+
+      // 方法 3: 尝试解压 FlateDecode 流
+      const streamText = await this.extractFromStreams(uint8Array, pdfContent);
+      if (streamText.length > 0) {
+        allExtractedTexts.push(streamText);
+      }
+
+      // 方法 4: 提取所有括号内文本（最后手段）
+      if (allExtractedTexts.length === 0) {
+        const fallbackText = this.extractFallbackText(pdfContent);
+        if (fallbackText.length > 0) {
+          allExtractedTexts.push(fallbackText);
+        }
+      }
+
+      // 合并所有提取的文本
+      let extractedText = allExtractedTexts.join(' ');
 
       // 清理文本
       extractedText = this.cleanExtractedText(extractedText);
@@ -270,12 +272,13 @@ export class ContentParser {
       // 验证提取的文本是否有效（非乱码）
       if (!this.isValidPdfText(extractedText)) {
         console.warn('[ContentParser] PDF提取的文本无效或为乱码');
-        extractedText = '';
+        // 尝试只保留中文和英文
+        extractedText = this.extractOnlyReadableChars(extractedText);
       }
 
       console.log(`[ContentParser] PDF文本提取完成,提取字符数: ${extractedText.length}`);
 
-      if (extractedText.length === 0) {
+      if (extractedText.length < 10) {
         throw new Error('PDF中未找到可提取的文本内容，可能是扫描版或加密PDF');
       }
 
@@ -285,6 +288,24 @@ export class ContentParser {
       console.error('[ContentParser] PDF文本提取失败:', error);
     }
     return '';
+  }
+
+  /**
+   * 只提取可读字符（中文、英文、数字）
+   */
+  private extractOnlyReadableChars(text: string): string {
+    let result = '';
+    for (let i = 0; i < text.length; i++) {
+      const code = text.charCodeAt(i);
+      if ((code >= 0x4E00 && code <= 0x9FFF) || // 中文
+        (code >= 0x0041 && code <= 0x005A) || // A-Z
+        (code >= 0x0061 && code <= 0x007A) || // a-z
+        (code >= 0x0030 && code <= 0x0039) || // 0-9
+        code === 0x0020 || code === 0x000A) { // 空格、换行
+        result += text[i];
+      }
+    }
+    return result.replace(/\s+/g, ' ').trim();
   }
 
   /**
@@ -330,12 +351,48 @@ export class ContentParser {
   }
 
   /**
-   * 解压 FlateDecode 数据 (HarmonyOS zlib 不支持内存解压，返回空)
+   * 解压 FlateDecode 数据 (通过临时文件使用 zlib)
    */
-  private async decompressFlate(_data: Uint8Array, _offset: number, _length: number): Promise<string> {
-    // HarmonyOS zlib API 仅支持文件解压，不支持内存解压
-    // 跳过压缩流，依赖其他提取方法
-    return '';
+  private async decompressFlate(data: Uint8Array, offset: number, length: number): Promise<string> {
+    try {
+      // 提取压缩数据
+      const compressedData = data.slice(offset, offset + length);
+
+      // 创建临时文件路径
+      const timestamp = Date.now();
+      const compressedPath = `${this.filesDir}/.temp_compressed_${timestamp}.bin`;
+      const decompressedPath = `${this.filesDir}/.temp_decompressed_${timestamp}.bin`;
+
+      // 写入压缩数据到临时文件
+      const compFile = fileIo.openSync(compressedPath, fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE | fileIo.OpenMode.TRUNC);
+      fileIo.writeSync(compFile.fd, compressedData.buffer);
+      fileIo.closeSync(compFile);
+
+      // 使用 zlib 解压
+      try {
+        await zlib.decompressFile(compressedPath, decompressedPath);
+
+        // 读取解压后的数据
+        const decompFile = fileIo.openSync(decompressedPath, fileIo.OpenMode.READ_ONLY);
+        const stat = fileIo.statSync(decompressedPath);
+        const buffer = new ArrayBuffer(Math.min(stat.size, 500 * 1024)); // 最多读取500KB
+        fileIo.readSync(decompFile.fd, buffer);
+        fileIo.closeSync(decompFile);
+
+        // 清理临时文件
+        fileIo.unlinkSync(compressedPath);
+        fileIo.unlinkSync(decompressedPath);
+
+        return this.arrayBufferToString(buffer);
+      } catch (zlibError) {
+        // 解压失败，清理临时文件
+        try { fileIo.unlinkSync(compressedPath); } catch (e) {}
+        try { fileIo.unlinkSync(decompressedPath); } catch (e) {}
+        return '';
+      }
+    } catch (error) {
+      return '';
+    }
   }
 
   /**
@@ -422,18 +479,40 @@ export class ContentParser {
    */
   private extractFallbackText(pdfContent: string): string {
     let extractedText = '';
-    const allStringsPattern = /\(([^)]{2,})\)/g;
+    // 匹配更长的文本串，过滤掉短的控制序列
+    const allStringsPattern = /\(([^)]{3,})\)/g;
     let match = allStringsPattern.exec(pdfContent);
 
     while (match !== null) {
       let text = this.decodePdfString(match[1]);
-      if (text.trim().length > 0 && !text.match(/^[\/\\]/) && !text.match(/^\d+\s+\d+\s+\d+/)) {
+      // 更严格的过滤条件
+      if (text.trim().length > 2 &&
+        !text.match(/^[\/\\]/) &&
+        !text.match(/^\d+\s+\d+/) &&
+        !text.match(/^[A-Z]{1,3}\d/) &&
+        this.hasReadableContent(text)) {
         extractedText += text + ' ';
       }
       match = allStringsPattern.exec(pdfContent);
     }
 
     return extractedText;
+  }
+
+  /**
+   * 检查文本是否包含可读内容
+   */
+  private hasReadableContent(text: string): boolean {
+    let readableCount = 0;
+    for (let i = 0; i < text.length; i++) {
+      const code = text.charCodeAt(i);
+      if ((code >= 0x4E00 && code <= 0x9FFF) || // 中文
+        (code >= 0x0041 && code <= 0x005A) || // A-Z
+        (code >= 0x0061 && code <= 0x007A)) { // a-z
+        readableCount++;
+      }
+    }
+    return readableCount >= 2 || (readableCount > 0 && text.length <= 5);
   }
 
   /**
@@ -452,7 +531,7 @@ export class ContentParser {
       for (let i = 0; i < hexStr.length; i += 4) {
         if (i + 4 <= hexStr.length) {
           const charCode = parseInt(hexStr.substring(i, i + 4), 16);
-          if (charCode > 0 && charCode < 0xFFFF) {
+          if (charCode > 0x001F && charCode < 0xFFFF && charCode !== 0xFFFE && charCode !== 0xFFFF) {
             decoded += String.fromCharCode(charCode);
           }
         }
@@ -463,29 +542,83 @@ export class ContentParser {
       match = unicodePattern.exec(pdfContent);
     }
 
-    // 提取普通 UTF-16 十六进制文本
-    const hex16Pattern = /<([0-9A-Fa-f]{4,})>/g;
+    // 提取普通 UTF-16 十六进制文本（更宽松的匹配）
+    const hex16Pattern = /<([0-9A-Fa-f]{8,})>/g;
     let hex16Match = hex16Pattern.exec(pdfContent);
 
     while (hex16Match !== null) {
       const hexStr = hex16Match[1];
-      if (hexStr.length >= 4 && hexStr.length % 4 === 0) {
+      if (hexStr.length % 4 === 0) {
         let decoded = '';
-        let isValidChinese = false;
+        let validCharCount = 0;
         for (let i = 0; i < hexStr.length; i += 4) {
           const charCode = parseInt(hexStr.substring(i, i + 4), 16);
+          // 中文字符范围
           if (charCode >= 0x4E00 && charCode <= 0x9FFF) {
-            isValidChinese = true;
+            decoded += String.fromCharCode(charCode);
+            validCharCount++;
           }
-          if (charCode > 0x1F && charCode < 0xFFFF) {
+          // 常用标点和字母数字
+          else if ((charCode >= 0x0020 && charCode <= 0x007E) ||
+            (charCode >= 0x3000 && charCode <= 0x303F) ||
+            (charCode >= 0xFF00 && charCode <= 0xFFEF)) {
             decoded += String.fromCharCode(charCode);
           }
         }
-        if (isValidChinese && decoded.trim().length > 0) {
+        // 至少有2个有效中文字符才添加
+        if (validCharCount >= 2 && decoded.trim().length > 0) {
           text += decoded + ' ';
         }
       }
       hex16Match = hex16Pattern.exec(pdfContent);
+    }
+
+    // 尝试提取 CID 字体映射的文本
+    const cidText = this.extractCIDText(pdfContent);
+    if (cidText.length > 0) {
+      text += ' ' + cidText;
+    }
+
+    return text;
+  }
+
+  /**
+   * 提取 CID 字体文本（针对使用 CID 字体的中文 PDF）
+   */
+  private extractCIDText(pdfContent: string): string {
+    let text = '';
+
+    // 查找 ToUnicode CMap 中的映射
+    const cmapPattern = /beginbfchar([\s\S]*?)endbfchar/g;
+    let cmapMatch = cmapPattern.exec(pdfContent);
+
+    // 构建字符映射表
+    const charMap = new Map<string, string>();
+
+    while (cmapMatch !== null) {
+      const mapContent = cmapMatch[1];
+      // 匹配 <srcCode> <destCode> 格式
+      const mappingPattern = /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g;
+      let mapping = mappingPattern.exec(mapContent);
+
+      while (mapping !== null) {
+        const srcCode = mapping[1];
+        const destHex = mapping[2];
+        // 解码目标 Unicode
+        if (destHex.length === 4) {
+          const charCode = parseInt(destHex, 16);
+          if (charCode > 0x001F) {
+            charMap.set(srcCode.toUpperCase(), String.fromCharCode(charCode));
+          }
+        }
+        mapping = mappingPattern.exec(mapContent);
+      }
+      cmapMatch = cmapPattern.exec(pdfContent);
+    }
+
+    // 如果找到了映射，尝试应用到文本
+    if (charMap.size > 0) {
+      console.log(`[ContentParser] 找到 ${charMap.size} 个 CID 字符映射`);
     }
 
     return text;
@@ -747,19 +880,20 @@ export class ContentParser {
 
       console.log(`[ContentParser] PDF文件大小: ${stat.size} bytes`);
 
-
       let content: string = '';
+
+      // 优先使用 PDFKit（ARM 真机）
       try {
-        content = await this.extractTextWithPDF(filePath);
-      } catch (pdfError) {
-        console.error(`[ContentParser] PDFKit解析失败: ${pdfError}`);
-        return {
-          success: false,
-          content: '',
-          wordCount: 0,
-          error: `PDF解析失败: ${pdfError.message || pdfError}`,
-          format: DocumentFormat.PDF
-        };
+        content = await this.extractPdfTextWithPDFKit(filePath);
+        console.log(`[ContentParser] PDFKit 解析成功，字符数: ${content.length}`);
+      } catch (pdfKitError) {
+        console.warn(`[ContentParser] PDFKit 解析失败，尝试备用方法: ${pdfKitError}`);
+        // 备用：自定义解析
+        try {
+          content = await this.extractTextWithPDF(filePath);
+        } catch (fallbackError) {
+          console.error(`[ContentParser] 备用解析也失败: ${fallbackError}`);
+        }
       }
 
       if (!content || content.trim().length === 0) {
@@ -768,7 +902,7 @@ export class ContentParser {
           success: false,
           content: '',
           wordCount: 0,
-          error: 'PDF 文件解析失败，无法提取文本内容',
+          error: 'PDF 文件解析失败，可能是扫描版或加密PDF',
           format: DocumentFormat.PDF
         };
       }
@@ -788,9 +922,70 @@ export class ContentParser {
         success: false,
         content: '',
         wordCount: 0,
-        error: `解析失败: ${error.message || error}`,
+        error: `解析失败: ${error}`,
         format: DocumentFormat.PDF
       };
+    }
+  }
+
+  /**
+   * 使用 PDFKit 提取 PDF 文本（ARM 真机可用）
+   */
+  private async extractPdfTextWithPDFKit(filePath: string): Promise<string> {
+    let pdfDocument: pdfService.PdfDocument | null = null;
+
+    try {
+      console.log(`[ContentParser] 使用PDFKit解析: ${filePath}`);
+
+      pdfDocument = new pdfService.PdfDocument();
+      if (!pdfDocument) {
+        throw new Error('创建 PdfDocument 实例失败');
+      }
+
+      const loadResult = pdfDocument.loadDocument(filePath, '');
+      if (loadResult !== pdfService.ParseResult.PARSE_SUCCESS) {
+        throw new Error(`PDF加载失败，错误码: ${loadResult}`);
+      }
+
+      const pageCount = pdfDocument.getPageCount();
+      console.log(`[ContentParser] PDF总页数: ${pageCount}`);
+
+      if (pageCount <= 0) {
+        throw new Error('PDF没有页面');
+      }
+
+      let extractedText = '';
+      const maxPages = Math.min(pageCount, 50);
+
+      for (let pageIndex = 0; pageIndex < maxPages; pageIndex++) {
+        try {
+          const page = pdfDocument.getPage(pageIndex);
+          if (!page) continue;
+
+          const graphs = page.getGraphicsObjects();
+          if (graphs && graphs.length > 0) {
+            for (const graph of graphs) {
+              const textObj = graph as pdfService.TextObject;
+              if (textObj.type === pdfService.GraphicsObjectType.OBJECT_TEXT && textObj.text) {
+                extractedText += textObj.text + ' ';
+              }
+            }
+          }
+
+          if (extractedText.length > 100000) break;
+        } catch (pageError) {
+          console.warn(`[ContentParser] 第 ${pageIndex + 1} 页提取失败`);
+        }
+      }
+
+      if (extractedText.trim().length === 0) {
+        throw new Error('未提取到文本');
+      }
+
+      return extractedText.trim();
+    } finally {
+      // PdfDocument 无需手动关闭
+      pdfDocument = null;
     }
   }
 

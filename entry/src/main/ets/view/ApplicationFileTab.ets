@@ -17,7 +17,7 @@ import { readFile } from '../common/utils/ReadFile';
 import { writeFile } from '../common/utils/WriteFile';
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { fileIo as fs, fileShare } from '@kit.CoreFileKit';
+import { fileIo as fs, fileShare, picker } from '@kit.CoreFileKit';
 
 
 @Component
@@ -35,6 +35,9 @@ export struct ApplicationFileTab {
 
   // 新增：文件列表状态
   @State fileList: string[] = [];
+
+  // 外部导入路径
+  private externalPath: string = '/data/local/tmp/docs';
 
 
   // 新增：获取rawfile目录下的所有文件
@@ -154,6 +157,123 @@ export struct ApplicationFileTab {
     }
   }
 
+  // 从外部路径导入文件到沙箱
+  private async importFromExternal(): Promise<void> {
+    try {
+      const context = getContext(this) as common.UIAbilityContext;
+      const sandboxDir: string = context.filesDir;
+
+      // 检查外部目录是否存在
+      if (!fs.accessSync(this.externalPath)) {
+        this.copyStatus = `外部目录不存在: ${this.externalPath}`;
+        return;
+      }
+
+      const files: string[] = fs.listFileSync(this.externalPath);
+      if (files.length === 0) {
+        this.copyStatus = '外部目录中没有文件';
+        return;
+      }
+
+      this.copyStatus = `开始导入 ${files.length} 个文件...`;
+      let successCount = 0;
+      let failCount = 0;
+      let details = '';
+
+      for (const fileName of files) {
+        try {
+          const srcPath = this.externalPath + '/' + fileName;
+          const dstPath = sandboxDir + '/' + fileName;
+
+          // 检查是否为文件
+          const stat = fs.statSync(srcPath);
+          if (!stat.isFile()) {
+            continue;
+          }
+
+          // 读取并写入
+          const srcFile = fs.openSync(srcPath, fs.OpenMode.READ_ONLY);
+          const buffer = new ArrayBuffer(stat.size);
+          fs.readSync(srcFile.fd, buffer);
+          fs.closeSync(srcFile);
+
+          const dstFile = fs.openSync(dstPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+          fs.writeSync(dstFile.fd, buffer);
+          fs.closeSync(dstFile);
+
+          successCount++;
+          details += `✓ ${fileName}: ${stat.size} 字节\n`;
+        } catch (fileError) {
+          failCount++;
+          details += `✗ ${fileName}: 失败\n`;
+          console.error("FileTab", `导入 ${fileName} 失败:`, fileError);
+        }
+      }
+
+      this.copyStatus = `导入完成！\n成功: ${successCount}, 失败: ${failCount}\n${details}`;
+      await this.updateFileList();
+    } catch (error) {
+      this.copyStatus = `导入失败: ${JSON.stringify(error)}`;
+      console.error("FileTab", "导入失败:", error);
+    }
+  }
+
+  // 使用文件选择器导入文件
+  private async importWithPicker(): Promise<void> {
+    try {
+      const context = getContext(this) as common.UIAbilityContext;
+      const sandboxDir: string = context.filesDir;
+
+      // 创建文档选择器
+      const documentPicker = new picker.DocumentViewPicker(context);
+      const options = new picker.DocumentSelectOptions();
+      options.maxSelectNumber = 20;
+
+      const uris = await documentPicker.select(options);
+      if (uris.length === 0) {
+        this.copyStatus = '未选择任何文件';
+        return;
+      }
+
+      this.copyStatus = `开始导入 ${uris.length} 个文件...`;
+      let successCount = 0;
+      let details = '';
+
+      for (const uri of uris) {
+        try {
+          // 从 URI 获取文件名
+          const parts = uri.split('/');
+          const fileName = parts[parts.length - 1];
+
+          // 打开源文件
+          const srcFile = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+          const stat = fs.statSync(srcFile.fd);
+          const buffer = new ArrayBuffer(stat.size);
+          fs.readSync(srcFile.fd, buffer);
+          fs.closeSync(srcFile);
+
+          // 写入沙盒
+          const dstPath = sandboxDir + '/' + fileName;
+          const dstFile = fs.openSync(dstPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+          fs.writeSync(dstFile.fd, buffer);
+          fs.closeSync(dstFile);
+
+          successCount++;
+          details += `✓ ${fileName}\n`;
+        } catch (fileError) {
+          details += `✗ 导入失败\n`;
+          console.error("FileTab", "导入文件失败:", fileError);
+        }
+      }
+
+      this.copyStatus = `导入完成！成功: ${successCount}/${uris.length}\n${details}`;
+      await this.updateFileList();
+    } catch (error) {
+      this.copyStatus = `选择文件失败: ${JSON.stringify(error)}`;
+      console.error("FileTab", "文件选择器错误:", error);
+    }
+  }
+
 
   //信息预览：
 
@@ -202,18 +322,37 @@ export struct ApplicationFileTab {
       // 文件操作按钮区域
       Row() {
         Button('拷贝所有文件')
-          .width('45%')
+          .width('30%')
           .height($r('app.float.default_40'))
           .fontColor('white')
           .backgroundColor('#4CAF50')
-          .fontSize($r('app.float.default_14'))
+          .fontSize($r('app.float.default_12'))
           .onClick((): void => {
             this.copyAllRawFilesToSandbox();
           })
 
+        Button('选择文件')
+          .width('30%')
+          .height($r('app.float.default_40'))
+          .fontColor('white')
+          .backgroundColor('#2196F3')
+          .fontSize($r('app.float.default_12'))
+          .onClick((): void => {
+            this.importWithPicker();
+          })
+
+        Button('外部导入')
+          .width('30%')
+          .height($r('app.float.default_40'))
+          .fontColor('white')
+          .backgroundColor('#FF9800')
+          .fontSize($r('app.float.default_12'))
+          .onClick((): void => {
+            this.importFromExternal();
+          })
       }
       .width('90%')
-      .justifyContent(FlexAlign.Center)
+      .justifyContent(FlexAlign.SpaceBetween)
       .margin({ bottom: $r('app.float.default_10') })
 
 
