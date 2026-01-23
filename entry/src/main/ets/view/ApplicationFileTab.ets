@@ -20,8 +20,6 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { fileIo as fs, fileShare } from '@kit.CoreFileKit';
 
 
-
-
 @Component
 export struct ApplicationFileTab {
   // Used to record the read content.

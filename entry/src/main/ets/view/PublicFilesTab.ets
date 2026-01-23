@@ -18,7 +18,6 @@ import { fileIo, fileUri } from '@kit.CoreFileKit';
 import { FileInfo } from '../common/utils/FileManager';
 
 //readFile 仅仅只能读txt文件
-
 import { readFile } from '../common/utils/ReadFile';
 import { common } from "@kit.AbilityKit"
 import { BusinessError } from '@kit.BasicServicesKit'

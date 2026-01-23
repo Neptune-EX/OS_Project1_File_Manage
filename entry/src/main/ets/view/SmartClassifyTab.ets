@@ -1,5 +1,5 @@
 /**
- * 智能分类 Tab 页面（优化版）
+ * 智能分类 Tab 页面
  * 提供文档智能分类、摘要生成、关键词提取功能
  * 支持本地分类（基于关键词匹配）- 异步处理避免UI卡顿
  */
@@ -12,6 +12,8 @@ import {
   getCategoryDisplayName
 } from '../common/types/AIDocTypes';
 import { SimilarityCalculator } from '../common/utils/SimilarityCalculator';
+import { ContentParser, DocumentFormat } from '../common/utils/ContentParser'; // 导入 ContentParser
+
 
 // 文件分析结果
 interface FileAnalysis {
@@ -60,6 +62,7 @@ export struct SmartClassifyTab {
   @State messageText: string = '';
   @State messageType: string = 'info';
   @State analyzedCount: number = 0;
+  private contentParser: ContentParser | null = null; // 新增
 
   private filesDir: string = '';
   private similarityCalculator: SimilarityCalculator | null = null;
@@ -71,6 +74,8 @@ export struct SmartClassifyTab {
     const uiAbilityContext = context as common.UIAbilityContext;
     this.filesDir = uiAbilityContext.filesDir;
     this.similarityCalculator = SimilarityCalculator.getInstance(context);
+    // 初始化 ContentParser
+    this.contentParser = ContentParser.getInstance(context);
 
     // 初始化类别颜色
     this.initCategoryColors();
@@ -188,40 +193,74 @@ export struct SmartClassifyTab {
   }
 
   // 读取文件内容（优化版）
-  private readFileContent(filename: string): string {
-    try {
-      const filePath = `${this.filesDir}/${filename}`;
-      const stat = fileIo.statSync(filePath);
-      const maxSize = 20 * 1024;
-      const readSize = Math.min(stat.size, maxSize);
+  // 重点实现docx文件的context和pdf的context的读取！
 
-      if (readSize === 0) {
+  // private readFileContent(filename: string): string {
+  //   try {
+  //     const filePath = `${this.filesDir}/${filename}`;
+  //     const stat = fileIo.statSync(filePath);
+  //     const maxSize = 20 * 1024;
+  //     const readSize = Math.min(stat.size, maxSize);
+  //
+  //     if (readSize === 0) {
+  //       return '';
+  //     }
+  //
+  //     // const arrayBuffer = new ArrayBuffer(readSize);
+  //     // const fd = fileIo.openSync(filePath, fileIo.OpenMode.READ_ONLY);
+  //     // fileIo.readSync(fd, arrayBuffer);
+  //     // fileIo.closeSync(fd);
+  //
+  //     const arrayBuffer = new ArrayBuffer(readSize);
+  //     // 打开文件，获取文件对象
+  //     const file = fileIo.openSync(filePath, fileIo.OpenMode.READ_ONLY);
+  //     // 从文件对象中获取文件描述符（fd）
+  //     const fd = file.fd;
+  //
+  //     // 使用文件描述符读取文件
+  //     fileIo.readSync(fd, arrayBuffer);
+  //     // 使用文件描述符关闭文件
+  //     fileIo.closeSync(fd);
+  //
+  //     const decoder = new util.TextDecoder('utf-8');
+  //     return decoder.decodeWithStream(new Uint8Array(arrayBuffer), { stream: false });
+  //   } catch (error) {
+  //     console.error('[SmartClassifyTab] 读取文件失败:', filename, JSON.stringify(error));
+  //     return '';
+  //   }
+  // }
+
+  // 修改：读取文件内容（使用 ContentParser）
+  private async readFileContent(filename: string): Promise<string> {
+    if (!this.contentParser) {
+      console.error('[SmartClassifyTab] ContentParser 未初始化');
+      return '';
+    }
+
+    try {
+      // 检查文件是否支持
+      if (!this.contentParser.isSupported(filename)) {
+        const extension = filename.toLowerCase().split('.').pop() || '';
+        console.warn(`[SmartClassifyTab] 不支持的文件格式: ${extension}`);
         return '';
       }
 
-      // const arrayBuffer = new ArrayBuffer(readSize);
-      // const fd = fileIo.openSync(filePath, fileIo.OpenMode.READ_ONLY);
-      // fileIo.readSync(fd, arrayBuffer);
-      // fileIo.closeSync(fd);
+      // 使用 ContentParser 解析文档
+      const result = await this.contentParser.parseDocument(filename);
 
-      const arrayBuffer = new ArrayBuffer(readSize);
-      // 打开文件，获取文件对象
-      const file = fileIo.openSync(filePath, fileIo.OpenMode.READ_ONLY);
-      // 从文件对象中获取文件描述符（fd）
-      const fd = file.fd;
-
-      // 使用文件描述符读取文件
-      fileIo.readSync(fd, arrayBuffer);
-      // 使用文件描述符关闭文件
-      fileIo.closeSync(fd);
-
-      const decoder = new util.TextDecoder('utf-8');
-      return decoder.decodeWithStream(new Uint8Array(arrayBuffer), { stream: false });
+      if (result.success) {
+        console.info(`[SmartClassifyTab] 成功读取文件: ${filename}, 字数: ${result.wordCount}`);
+        return result.content;
+      } else {
+        console.error(`[SmartClassifyTab] 读取文件失败: ${filename}, 错误: ${result.error}`);
+        return '';
+      }
     } catch (error) {
       console.error('[SmartClassifyTab] 读取文件失败:', filename, JSON.stringify(error));
       return '';
     }
   }
+
 
   // =============== 分析功能 ===============
 
@@ -301,15 +340,48 @@ export struct SmartClassifyTab {
     return summary;
   }
 
-  // 分析单个文件
-  private analyzeFile(index: number): FileAnalysis | null {
+  // // 分析单个文件
+  // private analyzeFile(index: number): FileAnalysis | null {
+  //   const file = this.fileList[index];
+  //   if (!file) {
+  //     return null;
+  //   }
+  //
+  //   try {
+  //     const content = this.readFileContent(file.filename);
+  //     if (!content || content.length < 10) {
+  //       return null;
+  //     }
+  //
+  //     const classification = this.classifyLocal(content);
+  //     const keywords = this.extractKeywords(content);
+  //     const summary = this.generateSummary(content);
+  //
+  //     return {
+  //       filename: file.filename,
+  //       category: classification.category,
+  //       categoryName: getCategoryDisplayName(classification.category),
+  //       confidence: classification.confidence,
+  //       keywords: keywords,
+  //       summary: summary,
+  //       wordCount: content.length,
+  //       isAnalyzed: true
+  //     };
+  //   } catch (error) {
+  //     console.error('[SmartClassifyTab] 分析文件失败:', file.filename, JSON.stringify(error));
+  //     return null;
+  //   }
+  // }
+
+  // 修改：分析单个文件（需要改为 async）
+  private async analyzeFile(index: number): Promise<FileAnalysis | null> {
     const file = this.fileList[index];
     if (!file) {
       return null;
     }
 
     try {
-      const content = this.readFileContent(file.filename);
+      const content = await this.readFileContent(file.filename); // 改为 await
       if (!content || content.length < 10) {
         return null;
       }
@@ -333,6 +405,7 @@ export struct SmartClassifyTab {
       return null;
     }
   }
+
 
   // 批量分析文件
   private async analyzeAllFiles(): Promise<void> {
@@ -360,7 +433,7 @@ export struct SmartClassifyTab {
         const endIndex = Math.min(i + batchSize, total);
 
         for (let j = i; j < endIndex; j++) {
-          const result = this.analyzeFile(j);
+          const result = await this.analyzeFile(j); // 改为 await
           if (result) {
             this.fileList[j] = result;
             analyzed++;

@@ -7,6 +7,10 @@ import { fileIo } from '@kit.CoreFileKit';
 import { common } from '@kit.AbilityKit';
 import { zlib } from '@kit.BasicServicesKit';
 
+import * as mammoth from "@ohos/mammoth";
+//华为原生第三方库，使用 ohpm install @ohos/mammoth 指令安装
+
+
 // 解析结果接口
 export interface ParseResult {
   success: boolean;
@@ -141,6 +145,10 @@ export class ContentParser {
     }
   }
 
+
+
+
+
   /**
    * 解析 DOCX 文件
    * DOCX 是 ZIP 压缩格式，需要解压并解析 word/document.xml
@@ -148,7 +156,7 @@ export class ContentParser {
   private async parseDocxFile(filename: string): Promise<ParseResult> {
     try {
       const filePath = `${this.filesDir}/${filename}`;
-
+      console.log("[ContentParser]正在读取docx文件")
       // 检查文件是否存在
       try {
         fileIo.accessSync(filePath);
@@ -162,18 +170,15 @@ export class ContentParser {
         };
       }
 
-      // 读取整个文件
-      const file = fileIo.openSync(filePath, fileIo.OpenMode.READ_ONLY);
-      const stat = fileIo.statSync(filePath);
-      const buffer = new ArrayBuffer(stat.size);
-      fileIo.readSync(file.fd, buffer);
-      fileIo.closeSync(file);
+      const res = await mammoth.extractRawText({
+        path: filePath
+      });
+      console.log(`[ContentParser] mammoth解析完成，message: ${res.messages}`);
 
-      // 尝试提取文本内容
-      // 由于 HarmonyOS 的 zlib 解压可能有限制，这里使用简化方法
-      // 直接搜索 XML 文本标签
-      const content = this.extractDocxText(buffer);
-      const wordCount = this.countWords(content);
+      // 提取文本内容
+      let content = res.value;
+      let wordCount=content.length
+
 
       if (content.length === 0) {
         return {
@@ -200,47 +205,6 @@ export class ContentParser {
         error: `解析失败: ${error}`,
         format: DocumentFormat.DOCX
       };
-    }
-  }
-
-  /**
-   * 从 DOCX 缓冲区提取文本
-   * 简化实现：搜索 XML 文本内容
-   */
-  private extractDocxText(buffer: ArrayBuffer): string {
-    try {
-      // 将 buffer 转换为字符串进行搜索
-      const uint8Array = new Uint8Array(buffer);
-      let rawContent = '';
-
-      // 搜索 word/document.xml 中的文本
-      // DOCX 中的文本通常在 <w:t> 标签内
-      for (let i = 0; i < uint8Array.length; i++) {
-        rawContent += String.fromCharCode(uint8Array[i]);
-      }
-
-      // 提取 <w:t> 标签中的文本
-      const textParts: string[] = [];
-      const regex = /<w:t[^>]*>([^<]*)<\/w:t>/g;
-      let match: RegExpExecArray | null = null;
-
-      // 使用循环替代 while + exec
-      const matches = rawContent.match(/<w:t[^>]*>([^<]*)<\/w:t>/g);
-      if (matches) {
-        matches.forEach((m: string) => {
-          // 提取标签内的内容
-          const innerMatch = m.match(/<w:t[^>]*>([^<]*)<\/w:t>/);
-          if (innerMatch && innerMatch[1]) {
-            textParts.push(innerMatch[1]);
-          }
-        });
-      }
-
-      // 合并文本
-      return textParts.join('');
-    } catch (error) {
-      console.error('[ContentParser] DOCX 文本提取失败:', error);
-      return '';
     }
   }
 

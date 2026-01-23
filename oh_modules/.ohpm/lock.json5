@@ -1,0 +1,114 @@
+{
+  "lockVersion": "1.0",
+  "settings": {
+    "resolveConflict": true,
+    "resolveConflictStrict": false,
+    "installAll": true
+  },
+  "overrides": {},
+  "overrideDependencyMap": {},
+  "modules": {
+    ".": {
+      "name": "",
+      "dependencies": {
+        "@ohos/mammoth": {
+          "specifier": "^1.0.0",
+          "version": "1.0.0"
+        }
+      },
+      "devDependencies": {},
+      "dynamicDependencies": {},
+      "maskedByOverrideDependencyMap": false
+    },
+    "entry": {
+      "name": "entry",
+      "dependencies": {},
+      "devDependencies": {},
+      "dynamicDependencies": {},
+      "maskedByOverrideDependencyMap": false
+    }
+  },
+  "packages": {
+    "@ohos/mammoth@1.0.0": {
+      "integrity": "sha512-/KyPhLx7QXbCGTX8Z0cIhyV1AlDvYVeT6J47wVLyRxb6C1fLwz9zyMXMy7HLtQ5DRJwUxMX3ZxGKvQEcfC8cTg==",
+      "storePath": "oh_modules/.ohpm/@ohos+mammoth@1.0.0",
+      "dependencies": {
+        "@xmldom/xmldom": "0.8.2",
+        "base64-js": "1.5.1",
+        "dingbat-to-unicode": "1.0.1",
+        "@ohos/jszip": "1.0.1",
+        "underscore": "1.13.7",
+        "xmlbuilder": "11.0.0"
+      },
+      "dynamicDependencies": {},
+      "dev": false,
+      "dynamic": false,
+      "maskedByOverrideDependencyMap": false
+    },
+    "@xmldom/xmldom@0.8.2": {
+      "integrity": "sha512-+R0juSseERyoPvnBQ/cZih6bpF7IpCXlWbHRoCRzYzqpz6gWHOgf8o4MOEf6KBVuOyqU+gCNLkCWVIJAro8XyQ==",
+      "storePath": "oh_modules/.ohpm/@xmldom+xmldom@0.8.2",
+      "dependencies": {},
+      "dynamicDependencies": {},
+      "dev": false,
+      "dynamic": false,
+      "maskedByOverrideDependencyMap": false
+    },
+    "base64-js@1.5.1": {
+      "integrity": "sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==",
+      "storePath": "oh_modules/.ohpm/base64-js@1.5.1",
+      "dependencies": {},
+      "dynamicDependencies": {},
+      "dev": false,
+      "dynamic": false,
+      "maskedByOverrideDependencyMap": false
+    },
+    "dingbat-to-unicode@1.0.1": {
+      "integrity": "sha512-98l0sW87ZT58pU4i61wa2OHwxbiYSbuxsCBozaVnYX2iCnr3bLM3fIes1/ej7h1YdOKuKt/MLs706TVnALA65w==",
+      "storePath": "oh_modules/.ohpm/dingbat-to-unicode@1.0.1",
+      "dependencies": {},
+      "dynamicDependencies": {},
+      "dev": false,
+      "dynamic": false,
+      "maskedByOverrideDependencyMap": false
+    },
+    "@ohos/jszip@1.0.1": {
+      "integrity": "sha512-/t1aNAhxww9H2VKd68fhL7A94lZRE5XLJIA7rb5R1ZTq9PPg+i2maeWqaV5OTsKjcLyGTK4lttjPilmf/wQfzg==",
+      "storePath": "oh_modules/.ohpm/@ohos+jszip@1.0.1",
+      "dependencies": {
+        "@ohos/node-polyfill": "1.0.1"
+      },
+      "dynamicDependencies": {},
+      "dev": false,
+      "dynamic": false,
+      "maskedByOverrideDependencyMap": false
+    },
+    "underscore@1.13.7": {
+      "integrity": "sha512-GMXzWtsc57XAtguZgaQViUOzs0KTkk8ojr3/xAxXLITqf/3EMwxC0inyETfDFjH/Krbhuep0HNbbjI9i/q3F3g==",
+      "storePath": "oh_modules/.ohpm/underscore@1.13.7",
+      "dependencies": {},
+      "dynamicDependencies": {},
+      "dev": false,
+      "dynamic": false,
+      "maskedByOverrideDependencyMap": false
+    },
+    "xmlbuilder@11.0.0": {
+      "integrity": "sha512-LzeAc96zUlknAk0F+xOXC8hO1D4ISG1ivov9UBjFkPcbSk6jVGhm9J8pTQp1ksZp9YbOws8pae8tVs+hwQl12w==",
+      "storePath": "oh_modules/.ohpm/xmlbuilder@11.0.0",
+      "dependencies": {},
+      "dynamicDependencies": {},
+      "dev": false,
+      "dynamic": false,
+      "maskedByOverrideDependencyMap": false
+    },
+    "@ohos/node-polyfill@1.0.1": {
+      "integrity": "sha512-2EPo4slPIHLtvQfh7IzNnNnk/Ou3sWH8IvrJ13UKUozXDMzPZ52dB9CFi/367Z7Ps55wEqkJphCXblr43HQDRA==",
+      "storePath": "oh_modules/.ohpm/@ohos+node-polyfill@1.0.1",
+      "dependencies": {},
+      "dynamicDependencies": {},
+      "dev": false,
+      "dynamic": false,
+      "maskedByOverrideDependencyMap": false
+    }
+  }
+}
