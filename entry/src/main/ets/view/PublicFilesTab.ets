@@ -14,12 +14,27 @@
  */
 
 import { FileManager } from '../common/utils/FileManager';
-import { fileIo } from '@kit.CoreFileKit';
+import { fileIo, fileUri } from '@kit.CoreFileKit';
 import { FileInfo } from '../common/utils/FileManager';
+
+//readFile 仅仅只能读txt文件
+
 import { readFile } from '../common/utils/ReadFile';
-import {common} from "@kit.AbilityKit"
-import {BusinessError} from '@kit.BasicServicesKit'
+import { common } from "@kit.AbilityKit"
+import { BusinessError } from '@kit.BasicServicesKit'
 import fs from '@ohos.file.fs';
+import { filePreview } from '@kit.PreviewKit';
+
+/**
+ * Preview configuration interface
+ */
+interface PreviewConfig {
+  title?: string;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+}
 
 @Component
 export struct publicFilesTab {
@@ -61,7 +76,6 @@ export struct publicFilesTab {
     console.log('页面显示，刷新文件列表');
     this.searchFilesWithInfo();
   }
-
   // 加载文件列表（包含详细信息）
   async loadFileListWithInfo() {
     console.log('加载文件列表（带详细信息）...');
@@ -85,7 +99,6 @@ export struct publicFilesTab {
       }
     }
   }
-
   // 搜索文件（带详细信息）
   async searchFilesWithInfo() {
     console.log('搜索文件:', this.searchKeyword);
@@ -132,7 +145,6 @@ export struct publicFilesTab {
     }
   }
 
-
   // 执行删除文件的方法
   private async executeDeleteFile(filename: string) {
     console.log(`执行删除文件: ${filename}`);
@@ -174,123 +186,153 @@ export struct publicFilesTab {
     this.selectedFileForPanel = '';
   }
 
+
   // 查看文件内容
-  private async viewFileContent(filename: string) {
-    if (this.fileManager) {
-      try {
-        const content = readFile(filename);
-        console.log(`文件内容:${content}`);
 
 
-        this.selectedFile = filename;
-        this.fileContent = content;
-        this.showFileContent = true;
-      } catch (error) {
-        console.error(`读取文件失败: ${error}`);
-        this.saveMessage = `读取文件失败: ${error}`;
-        this.showSaveSuccess = true;
-        setTimeout(() => {
-          this.showSaveSuccess = false;
-        }, 3000);
+
+  /**
+   * Get MIME type based on file extension
+   */
+  private getMimeType(fileName: string): string {
+    const extension = fileName.toLowerCase().split('.').pop() || '';
+
+    const mimeTypes: Record<string, string> = {
+      'pdf': 'application/pdf',
+      'doc': 'application/msword',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'txt': 'text/plain',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png'
+    };
+
+    return mimeTypes[extension] || 'application/octet-stream';
+  }
+
+  /**
+   * Check if file type supports preview
+   */
+  private canPreviewFileType(fileName: string): boolean {
+    const extension = fileName.toLowerCase().split('.').pop() || '';
+    const supportedTypes = ['pdf', 'doc', 'docx', 'txt'];
+    return supportedTypes.indexOf(extension) !== -1;
+  }
+
+  /**
+   * Check if file is a text file
+   */
+  private isTextFile(fileName: string): boolean {
+    const extension = fileName.toLowerCase().split('.').pop() || '';
+    return extension === 'txt';
+  }
+
+  /**
+   * Open file preview using PreviewKit (for PDF, DOCX, etc.)
+   */
+  private async openFilePreview(fileName: string): Promise<void> {
+    try {
+      // Get UIContext
+      const uiContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      if (!uiContext) {
+        throw new Error('Unable to get UI context');
       }
+
+      // Get file path
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      const sandboxDir: string = context.filesDir;
+      const filePath: string = sandboxDir + '/' + fileName;
+      // Check if file exists
+      try {
+        const isExist = fs.accessSync(filePath);
+        if (!isExist) {
+          throw new Error(`File does not exist: ${fileName}`);
+        }
+      } catch (error) {
+        throw new Error(`File does not exist: ${fileName}`);
+      }
+      // Convert path to URI
+      const uri = fileUri.getUriFromPath(filePath);
+      // Build preview parameters
+      const previewInfo: filePreview.PreviewInfo = {
+        title: fileName,
+        uri: uri,
+        mimeType: this.getMimeType(fileName)
+      };
+      const displayInfo: filePreview.DisplayInfo = {
+        x: 100,
+        y: 100,
+        width: 800,
+        height: 800
+      };
+      // Open preview
+      await filePreview.openPreview(uiContext, previewInfo, displayInfo);
+
+      this.saveMessage = `Preview opened: ${fileName}`;
+      this.showSaveSuccess = true;
+      setTimeout(() => {
+        this.showSaveSuccess = false;
+      }, 2000);
+
+    } catch (error) {
+      const err = error as BusinessError;
+      console.error(`Failed to open preview:`, err);
+      this.saveMessage = `Preview failed: ${err.message || 'Unknown error'}`;
+      this.showSaveSuccess = true;
+      setTimeout(() => {
+        this.showSaveSuccess = false;
+      }, 3000);
     }
   }
 
-  // private async updateFileContent() {
-  //   if (!this.fileManager || !this.selectedFile) {
-  //     console.error('更新文件内容参数不完整');
-  //     return;
-  //   }
-  //
-  //   try {
-  //     // 直接调用 FileManager 的 updateFile 方法
-  //     const success = await this.fileManager.updateFile(this.selectedFile, this.fileContent);
-  //
-  //     if (success) {
-  //       console.log(`文件内容更新成功: ${this.selectedFile}`);
-  //
-  //       // 显示成功提示
-  //       this.saveMessage = '文件内容已保存';
-  //       this.showSaveSuccess = true;
-  //       setTimeout(() => {
-  //         this.showSaveSuccess = false;
-  //       }, 2000);
-  //
-  //       // 关闭文件内容界面
-  //       setTimeout(() => {
-  //         this.showFileContent = false;
-  //       }, 1000);
-  //
-  //       // 刷新文件列表（因为文件大小可能已改变）
-  //       await this.loadFileListWithInfo();
-  //     } else {
-  //       console.error('更新文件内容失败');
-  //       this.saveMessage = '保存失败，请重试';
-  //       this.showSaveSuccess = true;
-  //       setTimeout(() => {
-  //         this.showSaveSuccess = false;
-  //       }, 3000);
-  //     }
-  //   } catch (error) {
-  //     console.error(`更新文件内容过程中发生错误: ${error}`);
-  //     this.saveMessage = `保存失败: ${error}`;
-  //     this.showSaveSuccess = true;
-  //     setTimeout(() => {
-  //       this.showSaveSuccess = false;
-  //     }, 3000);
-  //   }
-  // }
-  private async updateFileContent() {
-    if (!this.selectedFile || !this.fileContent) {
-      console.error('更新文件内容参数不完整');
+  /**
+   * View file content - supports TXT (inline), DOCX and PDF (preview window)
+   */
+  private async viewFileContent(filename: string): Promise<void> {
+    if (!this.fileManager) {
       return;
     }
 
     try {
-      console.log(`开始更新文件内容: ${this.selectedFile}`);
+      // Check if file type is supported
+      if (!this.canPreviewFileType(filename)) {
+        this.saveMessage = `File type not supported for preview: ${filename}`;
+        this.showSaveSuccess = true;
+        setTimeout(() => {
+          this.showSaveSuccess = false;
+        }, 3000);
+        return;
+      }
 
-      // 获取文件路径
-      const context = this.getUIContext().getHostContext() as Context;
-      const filesDir = context.filesDir;
-      const filePath = filesDir + '/' + this.selectedFile;
-
-      console.log(`更新文件路径: ${filePath}`);
-
-      // 创建文件流并写入内容
-      let fileStream = fileIo.createStreamSync(filePath, "w+");
-
-      fileStream.writeSync(this.fileContent);
-      fileStream.close();
-
-      console.log(`文件内容更新成功: ${this.selectedFile}`);
-      console.log(`写入的内容长度: ${this.fileContent.length}`);
-
-      // 显示成功提示
-      this.saveMessage = '文件内容已保存';
-      this.showSaveSuccess = true;
-
-      // 关闭文件内容界面
-      setTimeout(() => {
-        this.showFileContent = false;
-      }, 1000);
-
-      // 刷新文件列表（因为文件大小可能已改变）
-      await this.loadFileListWithInfo();
-
-      // 3秒后隐藏成功提示
-      setTimeout(() => {
-        this.showSaveSuccess = false;
-      }, 3000);
-
+      await this.openFilePreview(filename);
+      // // For text files, display content inline (commented out as UI is commented)
+      // if (this.isTextFile(filename)) {
+      //   const content = readFile(filename);
+      //   console.log(`File content: ${content}`);
+      //
+      //   this.selectedFile = filename;
+      //   this.fileContent = content;
+      //   this.showFileContent = true;
+      //
+      //   this.saveMessage = `Text file loaded: ${filename}`;
+      //   this.showSaveSuccess = true;
+      //   setTimeout(() => {
+      //     this.showSaveSuccess = false;
+      //   }, 2000);
+      // } else {
+      //   // For DOCX, PDF, and other document types, open preview window
+      //   await this.openFilePreview(filename);
+      // }
     } catch (error) {
-      console.error(`更新文件内容失败: ${error}`);
-      this.saveMessage = `保存失败: ${error.message || error}`;
+      console.error(`Failed to view file: ${error}`);
+      this.saveMessage = `Failed to read file: ${error}`;
       this.showSaveSuccess = true;
       setTimeout(() => {
         this.showSaveSuccess = false;
       }, 3000);
     }
   }
+
 
 
   // 打开重命名对话框
@@ -369,7 +411,6 @@ export struct publicFilesTab {
       }, 3000);
     }
   }
-
 
 
   // 根据文件扩展名返回对应的图标
@@ -560,7 +601,7 @@ export struct publicFilesTab {
                 this.closeFileActionPanel();
               })
 
-            Button('查看并修改内容')
+            Button('查看内容')
               .fontSize(18)
               .width('90%')
               .height(50)
@@ -697,104 +738,107 @@ export struct publicFilesTab {
         .hitTestBehavior(HitTestMode.None)
       }
 
-      // === 文件内容查看/编辑界面 ===
-      if (this.showFileContent && this.selectedFile) {
-        Stack()
-          .width('100%')
-          .height('100%')
-          .backgroundColor('rgba(0, 0, 0, 0.5)')
-          .onClick(() => {
-            this.showFileContent = false;
-          })
+      // // === 文件内容查看/编辑界面 ===
+      // if (this.showFileContent && this.selectedFile) {
+      //   Stack()
+      //     .width('100%')
+      //     .height('100%')
+      //     .backgroundColor('rgba(0, 0, 0, 0.5)')
+      //     .onClick(() => {
+      //       this.showFileContent = false;
+      //     })
+      //
+      //   Column() {
+      //     Row() {
+      //       Text('编辑文件内容')
+      //         .fontSize(20)
+      //         .fontWeight(FontWeight.Bold)
+      //         .fontColor('#333333')
+      //         .layoutWeight(1)
+      //
+      //       Button('×')
+      //         .fontSize(24)
+      //         .fontColor('#666666')
+      //         .backgroundColor(Color.Transparent)
+      //         .onClick(() => {
+      //           this.showFileContent = false;
+      //         })
+      //     }
+      //     .width('100%')
+      //     .padding({ left: 20, right: 20, top: 15, bottom: 15 })
+      //     .border({ width: { bottom: 1 }, color: '#E0E0E0' })
+      //
+      //     Column({ space: 15 }) {
+      //       Row() {
+      //         Text('文件名:')
+      //           .fontSize(16)
+      //           .fontColor('#666666')
+      //           .width('20%')
+      //         Text(this.selectedFile)
+      //           .fontSize(16)
+      //           .fontColor('#007AFF')
+      //           .fontWeight(FontWeight.Medium)
+      //           .maxLines(1)
+      //           .textOverflow({ overflow: TextOverflow.Ellipsis })
+      //           .width('80%')
+      //       }
+      //       .width('100%')
+      //
+      //       Text('文件内容:')
+      //         .fontSize(16)
+      //         .fontColor('#666666')
+      //         .width('100%')
+      //         .textAlign(TextAlign.Start)
+      //
+      //       TextArea({ text: this.fileContent })
+      //         .onChange((value: string) => {
+      //           this.fileContent = value;
+      //         })
+      //         .width('100%')
+      //         .height(300)
+      //         .backgroundColor('#F8F8F8')
+      //         .padding(10)
+      //         .border({ width: 1, color: '#E0E0E0', radius: 8 })
+      //     }
+      //     .width('100%')
+      //     .padding(20)
+      //
+      //     Row({ space: 15 }) {
+      //       Button('取消')
+      //         .fontSize(16)
+      //         .width('45%')
+      //         .height(45)
+      //         .backgroundColor('#8E8E93')
+      //         .fontColor('#FFFFFF')
+      //         .borderRadius(10)
+      //         .onClick(() => {
+      //           this.showFileContent = false;
+      //         })
+      //
+      //       Button('保存修改')
+      //         .fontSize(16)
+      //         .width('45%')
+      //         .height(45)
+      //         .backgroundColor('#34C759')
+      //         .fontColor('#FFFFFF')
+      //         .borderRadius(10)
+      //         .onClick(() => {
+      //           this.updateFileContent();
+      //         })
+      //     }
+      //     .width('100%')
+      //     .padding({ left: 20, right: 20, bottom: 20 })
+      //   }
+      //   .width('85%')
+      //   .backgroundColor('#FFFFFF')
+      //   .borderRadius(20)
+      //   .shadow({ radius: 20, color: '#000000', offsetX: 0, offsetY: 0 })
+      //   .position({ x: '7.5%', y: '15%' })
+      //   .hitTestBehavior(HitTestMode.None)
+      // }
 
-        Column() {
-          Row() {
-            Text('编辑文件内容')
-              .fontSize(20)
-              .fontWeight(FontWeight.Bold)
-              .fontColor('#333333')
-              .layoutWeight(1)
 
-            Button('×')
-              .fontSize(24)
-              .fontColor('#666666')
-              .backgroundColor(Color.Transparent)
-              .onClick(() => {
-                this.showFileContent = false;
-              })
-          }
-          .width('100%')
-          .padding({ left: 20, right: 20, top: 15, bottom: 15 })
-          .border({ width: { bottom: 1 }, color: '#E0E0E0' })
 
-          Column({ space: 15 }) {
-            Row() {
-              Text('文件名:')
-                .fontSize(16)
-                .fontColor('#666666')
-                .width('20%')
-              Text(this.selectedFile)
-                .fontSize(16)
-                .fontColor('#007AFF')
-                .fontWeight(FontWeight.Medium)
-                .maxLines(1)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-                .width('80%')
-            }
-            .width('100%')
-
-            Text('文件内容:')
-              .fontSize(16)
-              .fontColor('#666666')
-              .width('100%')
-              .textAlign(TextAlign.Start)
-
-            TextArea({ text: this.fileContent })
-              .onChange((value: string) => {
-                this.fileContent = value;
-              })
-              .width('100%')
-              .height(300)
-              .backgroundColor('#F8F8F8')
-              .padding(10)
-              .border({ width: 1, color: '#E0E0E0', radius: 8 })
-          }
-          .width('100%')
-          .padding(20)
-
-          Row({ space: 15 }) {
-            Button('取消')
-              .fontSize(16)
-              .width('45%')
-              .height(45)
-              .backgroundColor('#8E8E93')
-              .fontColor('#FFFFFF')
-              .borderRadius(10)
-              .onClick(() => {
-                this.showFileContent = false;
-              })
-
-            Button('保存修改')
-              .fontSize(16)
-              .width('45%')
-              .height(45)
-              .backgroundColor('#34C759')
-              .fontColor('#FFFFFF')
-              .borderRadius(10)
-              .onClick(() => {
-                this.updateFileContent();
-              })
-          }
-          .width('100%')
-          .padding({ left: 20, right: 20, bottom: 20 })
-        }
-        .width('85%')
-        .backgroundColor('#FFFFFF')
-        .borderRadius(20)
-        .shadow({ radius: 20, color: '#000000', offsetX: 0, offsetY: 0 })
-        .position({ x: '7.5%', y: '15%' })
-        .hitTestBehavior(HitTestMode.None)
-      }
     }
     .width('100%')
     .layoutWeight(1)
