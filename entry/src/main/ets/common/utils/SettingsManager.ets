@@ -9,7 +9,10 @@ import { common } from '@kit.AbilityKit';
 
 // 设置键名常量
 const PREFERENCES_NAME = 'ai_doc_settings';
+
+//在这里输入deepseekAPI的key
 const KEY_API_KEY = 'deepseek_api_key';
+
 const KEY_AUTO_ANALYZE = 'auto_analyze';
 const KEY_ANALYSIS_LANGUAGE = 'analysis_language';
 const KEY_LAST_SCAN_TIME = 'last_scan_time';

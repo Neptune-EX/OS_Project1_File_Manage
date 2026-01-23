@@ -48,55 +48,6 @@ export class FileManager {
   }
 
 
-
-  // // 5. 查询文件（根据关键字）
-  // async searchFiles(keyword: string): Promise<Array<string>> {
-  //   try {
-  //     const filesDir = this.getFilesDir();
-  //     const list = fs.listFileSync(filesDir);
-  //     const result: Array<string> = [];
-  //
-  //     for (const file of list) {
-  //       if (keyword === '' || file.toLowerCase().includes(keyword.toLowerCase())) {
-  //         result.push(file);
-  //       }
-  //     }
-  //
-  //     return result;
-  //   } catch (error) {
-  //     Logger.error(`searchFiles failed: ${JSON.stringify(error)}`);
-  //     return [];
-  //   }
-  // }
-
-  // // 6. 获取所有文件列表
-  // async getAllFiles(): Promise<Array<string>> {
-  //   return this.searchFiles('');
-  // }
-
-
-  // // 8. 获取文件信息
-  // async getFileInfo(filename: string): Promise<FileInfoType> {
-  //   try {
-  //     const filePath = this.getFilesDir() + '/' + filename;
-  //     const stat = await fs.stat(filePath);
-  //
-  //     return {
-  //       filename: filename,
-  //       size: stat.size,
-  //       mtime: stat.mtime,
-  //       ctime: stat.ctime
-  //     };
-  //   } catch (error) {
-  //     Logger.error(`getFileInfo failed: ${JSON.stringify(error)}`);
-  //     return {
-  //       filename: '',
-  //       size: 0,
-  //       mtime: 0,
-  //       ctime: 0
-  //     };
-  //   }
-  // }
   /**
    * 搜索文件并返回详细信息
    */
@@ -166,8 +117,8 @@ export class FileManager {
       // 使用 fileIo 而不是 fs（与 getAllFiles 保持一致）
       const allFiles = fileIo.listFileSync(filesDir);
       // 只显示 .txt 文件，过滤掉系统文件（.开头）和非txt文件
-      const files = allFiles.filter(f => !f.startsWith('.') && f.endsWith('.txt'));
-      console.log(`[getAllFilesWithInfo] 找到txt文件: ${files.length} 个`);
+      const files = allFiles.filter(f => !f.startsWith('.'));
+      console.log(`[getAllFilesWithInfo] 找到文件: ${files.length} 个`);
 
       const fileInfos: FileInfo[] = [];
 
@@ -223,6 +174,8 @@ export class FileManager {
       return [];
     }
   }
+
+
 
   // 确保 formatFileSize 和 formatDate 方法正确实现
   private formatFileSize(bytes: number): string {
@@ -403,6 +356,5 @@ export class FileManager {
       return false;
     }
   }
-
 
 }

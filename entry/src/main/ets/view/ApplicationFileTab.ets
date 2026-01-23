@@ -243,7 +243,7 @@ import { writeFile } from '../common/utils/WriteFile';
 
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { fileIo as fs } from '@kit.CoreFileKit';
+import { fileIo as fs, fileShare } from '@kit.CoreFileKit';
 import { filePreview } from '@kit.PreviewKit';
 
 
@@ -572,18 +572,140 @@ export struct ApplicationFileTab {
   // }
 
   // 新增：预览文件
+  // private async previewFile(fileName: string): Promise<void> {
+  //   try {
+  //     // 获取UIContext
+  //     // let uiContext = this.getUIContext();
+  //     let uiContext = this.getUIContext().getHostContext() as Context;
+  //
+  //     if (!uiContext) {
+  //       this.copyStatus = '无法获取UI上下文';
+  //       return;
+  //     }
+  //
+  //     // 获取文件路径
+  //     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+  //     const sandboxDir: string = context.filesDir;
+  //     const filePath: string = sandboxDir + '/' + fileName;
+  //
+  //     // 检查文件是否存在
+  //     try {
+  //       const stats = fs.statSync(filePath);
+  //       if (!stats.isFile()) {
+  //         this.copyStatus = `文件 ${fileName} 不存在`;
+  //         return;
+  //       }
+  //     } catch (error) {
+  //       this.copyStatus = `文件 ${fileName} 不存在`;
+  //       return;
+  //     }
+  //
+  //     // 构建文件URI
+  //     const fileUri = 'file://' + filePath;
+  //
+  //     // 设置预览窗口显示信息（可选）
+  //     const displayInfo: filePreview.DisplayInfo = {
+  //       x: 100,    // 窗口起始x坐标
+  //       y: 100,    // 窗口起始y坐标
+  //       width: 800, // 窗口宽度
+  //       height: 800 // 窗口高度
+  //     };
+  //
+  //     // 构建预览信息
+  //     const fileInfo: filePreview.PreviewInfo = {
+  //       title: fileName,  // 预览标题
+  //       uri: fileUri,     // 文件URI
+  //       mimeType: this.getMimeType(fileName) // 根据文件扩展名获取MIME类型
+  //     };
+  //
+  //     this.copyStatus = `正在打开预览: ${fileName}...`;
+  //
+  //     // 打开预览
+  //     await filePreview.openPreview(uiContext, fileInfo, displayInfo);
+  //
+  //     this.copyStatus = `已打开预览: ${fileName}`;
+  //     console.info('FileTab', 'Succeeded in opening preview');
+  //
+  //   } catch (error) {
+  //     const err = error as BusinessError;
+  //     this.copyStatus = `预览失败: ${err.message}`;
+  //     console.error(`FileTab`, `Failed to open preview, err.code = ${err.code}, err.message = ${err.message}`);
+  //   }
+  // }
+
+  // async previewFile(fileName:string): Promise<void> {
+  //   const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;const sandboxDir: string = context.filesDir;
+  //   const selectedFilePath: string = sandboxDir + '/' + fileName;
+  //   if (!selectedFilePath) {
+  //     console.log("请先选择文件");
+  //     return;
+  //   }
+  //
+  //   try {
+  //     let uiContext = this.getUIContext().getHostContext() as Context;
+  //
+  //     // 1. 检查文件是否存在
+  //     try {
+  //       await fs.access(selectedFilePath);
+  //     } catch {
+  //       console.log('文件不存在或不可访问');
+  //       return;
+  //     }
+  //
+  //     // 2. 检查是否可预览
+  //     const uri = selectedFilePath.startsWith('file://') ?
+  //       selectedFilePath :
+  //       `file://${selectedFilePath}`;
+  //
+  //     await fileShare.persistPermission([
+  //       {
+  //         uri: uri,
+  //         operationMode: fileShare.OperationMode.READ_MODE
+  //       }
+  //     ]);
+  //
+  //     const canPreview = await filePreview.canPreview(uiContext, uri);
+  //     if (!canPreview) {
+  //       console.log('不支持预览此文件类型');
+  //       return;
+  //     }
+  //
+  //     // 3. 准备预览参数
+  //     const fileInfo: filePreview.PreviewInfo = {
+  //       title: this.fileName,
+  //       uri: uri,
+  //       mimeType: this.getMimeType(selectedFilePath)
+  //     };
+  //
+  //     // 4. 检查是否已有预览窗口
+  //     const hasDisplayed = await filePreview.hasDisplayed(uiContext);
+  //
+  //     if (hasDisplayed) {
+  //       // 已有窗口则关闭
+  //       await filePreview.closePreview(uiContext)
+  //     } else {
+  //       // 新开预览窗口
+  //       const displayInfo: filePreview.DisplayInfo = {
+  //         x: 100,  // 窗口起始x坐标
+  //         y: 100,  // 窗口起始y坐标
+  //         width: 800, // 窗口宽度
+  //         height: 800 // 窗口高度
+  //       };
+  //
+  //       await filePreview.openPreview(uiContext, fileInfo, displayInfo);
+  //     }
+  //
+  //     console.info('文件预览成功');
+  //   } catch (err) {
+  //     const error = err as BusinessError;
+  //     console.error(`预览失败，错误码: ${error.code}, 错误信息: ${error.message}`);
+  //   }
+  // }
+
   private async previewFile(fileName: string): Promise<void> {
     try {
-      // 获取UIContext
-      // let uiContext = this.getUIContext();
-      let uiContext = this.getUIContext().getHostContext() as Context;
+      console.info('FileTab', '开始预览文件:', fileName);
 
-      if (!uiContext) {
-        this.copyStatus = '无法获取UI上下文';
-        return;
-      }
-
-      // 获取文件路径
       const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
       const sandboxDir: string = context.filesDir;
       const filePath: string = sandboxDir + '/' + fileName;
@@ -592,105 +714,116 @@ export struct ApplicationFileTab {
       try {
         const stats = fs.statSync(filePath);
         if (!stats.isFile()) {
-          this.copyStatus = `文件 ${fileName} 不存在`;
+          this.copyStatus = `${fileName} 不是文件`;
           return;
         }
       } catch (error) {
-        this.copyStatus = `文件 ${fileName} 不存在`;
+        this.copyStatus = `${fileName} 不存在`;
         return;
       }
 
-      // 构建文件URI
-      const fileUri = 'file://' + filePath;
+      // 获取正确的URI格式
+      // HarmonyOS沙箱文件的正确URI格式
+      const fileUri = `internal://app/${fileName}`;
 
-      // 设置预览窗口显示信息（可选）
+      console.info('FileTab', '文件URI:', fileUri);
+      console.info('FileTab', '文件路径:', filePath);
+
+      // 获取UIContext
+      let uiContext: common.UIAbilityContext;
+      try {
+        // 方式1：使用getUIContext
+        const uiContextObj = this.getUIContext();
+        uiContext = uiContextObj.getHostContext() as common.UIAbilityContext;
+      } catch (error) {
+        // 方式2：备用方法，直接使用context
+        uiContext = context;
+      }
+
+      // 构建预览参数
       const displayInfo: filePreview.DisplayInfo = {
-        x: 100,    // 窗口起始x坐标
-        y: 100,    // 窗口起始y坐标
-        width: 800, // 窗口宽度
-        height: 800 // 窗口高度
+        x: 100,
+        y: 100,
+        width: 800,
+        height: 600
       };
 
-      // 构建预览信息
       const fileInfo: filePreview.PreviewInfo = {
-        title: fileName,  // 预览标题
-        uri: fileUri,     // 文件URI
-        mimeType: this.getMimeType(fileName) // 根据文件扩展名获取MIME类型
+        title: fileName,
+        uri: fileUri,
+        mimeType: this.getMimeType(fileName)
       };
 
-      this.copyStatus = `正在打开预览: ${fileName}...`;
+      this.copyStatus = `正在打开 ${fileName}...`;
 
-      // 打开预览
+      // 直接打开预览，去掉不必要的权限检查
       await filePreview.openPreview(uiContext, fileInfo, displayInfo);
 
       this.copyStatus = `已打开预览: ${fileName}`;
-      console.info('FileTab', 'Succeeded in opening preview');
+      console.info('FileTab', '预览成功');
 
     } catch (error) {
       const err = error as BusinessError;
-      this.copyStatus = `预览失败: ${err.message}`;
-      console.error(`FileTab`, `Failed to open preview, err.code = ${err.code}, err.message = ${err.message}`);
+      console.error('FileTab', `预览失败, 错误码: ${err.code}, 错误信息: ${err.message}`);
+
+      // 根据错误码提供具体提示
+      switch (err.code) {
+        case 201:
+          this.copyStatus = '权限验证失败，请检查应用权限设置';
+          break;
+        case 202:
+          this.copyStatus = `没有应用可以打开 ${fileName}`;
+          break;
+        case 206:
+          this.copyStatus = '文件不存在或无法访问';
+          break;
+        default:
+          this.copyStatus = `预览失败: ${err.message}`;
+      }
     }
   }
 
-  // 辅助方法：根据文件扩展名获取MIME类型
-  private getMimeType(fileName: string): string {
-    const extension = fileName.toLowerCase().split('.').pop() || '';
+  private getMimeType(filePath: string): string {
+    const extension = filePath.split('.').pop()?.toLowerCase() || '';
 
-    const mimeTypes: Record<string, string> = {
-      // 文档类型
-      'pdf': 'application/pdf',
-      'doc': 'application/msword',
-      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'xls': 'application/vnd.ms-excel',
-      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'ppt': 'application/vnd.ms-powerpoint',
-      'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'txt': 'text/plain',
-      'rtf': 'application/rtf',
-      'odt': 'application/vnd.oasis.opendocument.text',
+    switch (extension) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'bmp':
+        return 'image/bmp';
+      case 'webp':
+        return 'image/webp';
 
-      // 图片类型
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'png': 'image/png',
-      'gif': 'image/gif',
-      'bmp': 'image/bmp',
-      'webp': 'image/webp',
-      'svg': 'image/svg+xml',
+      case 'mp4':
+        return 'video/mp4';
+      case 'mov':
+        return 'video/quicktime';
+      case 'avi':
+        return 'video/x-msvideo';
 
-      // 音频类型
-      'mp3': 'audio/mpeg',
-      'wav': 'audio/wav',
-      'ogg': 'audio/ogg',
-      'm4a': 'audio/mp4',
+      case 'mp3':
+        return 'audio/mpeg';
+      case 'wav':
+        return 'audio/wav';
+      case 'ogg':
+        return 'audio/ogg';
 
-      // 视频类型
-      'mp4': 'video/mp4',
-      'avi': 'video/x-msvideo',
-      'mov': 'video/quicktime',
-      'mkv': 'video/x-matroska',
-      'webm': 'video/webm',
+      case 'txt':
+      case 'log':
+        return 'text/plain';
 
-      // 压缩文件
-      'zip': 'application/zip',
-      'rar': 'application/x-rar-compressed',
-      '7z': 'application/x-7z-compressed',
-      'tar': 'application/x-tar',
-      'gz': 'application/gzip',
+      case 'html':
+      case 'htm':
+        return 'text/html';
 
-      // 其他常见类型
-      'json': 'application/json',
-      'xml': 'application/xml',
-      'html': 'text/html',
-      'htm': 'text/html',
-      'css': 'text/css',
-      'js': 'application/javascript',
-      'ts': 'application/typescript',
-      'ets': 'application/typescript'
-    };
-
-    return mimeTypes[extension] || 'application/octet-stream';
+      default:
+        return 'application/octet-stream';
+    }
   }
 
   // 修改文件类型检测方法，用于UI显示
