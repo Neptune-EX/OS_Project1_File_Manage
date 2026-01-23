@@ -17,6 +17,7 @@ import { ApplicationFileTab } from '../view/ApplicationFileTab';
 import { publicFilesTab } from '../view/PublicFilesTab';
 import { SmartClassifyTab } from '../view/SmartClassifyTab';
 import { KnowledgeTab } from '../view/KnowledgeTab';
+import { TrashTab } from '../view/TrashTab';
 
 @Entry
 @Component
@@ -118,6 +119,15 @@ struct HomePage {
         }
         .height('100%')
         .tabBar(new SubTabBarStyle($r('app.string.bar7'))
+          .indicator({marginTop : $r('app.float.default_8')})
+          .labelStyle({font : {size : $r('app.float.default_16')}})
+        )
+
+        TabContent() {
+          TrashTab()
+        }
+        .height('100%')
+        .tabBar(new SubTabBarStyle('回收站')
           .indicator({marginTop : $r('app.float.default_8')})
           .labelStyle({font : {size : $r('app.float.default_16')}})
         )

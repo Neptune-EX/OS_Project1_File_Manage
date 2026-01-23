@@ -14,6 +14,8 @@ import {
 import { SimilarityCalculator } from '../common/utils/SimilarityCalculator';
 import { ContentParser, DocumentFormat } from '../common/utils/ContentParser';
 import { DeepSeekService, AICallResult } from '../common/utils/DeepSeekService';
+import { DiffUtils, DiffLine, DiffType, DiffResult } from '../common/utils/DiffUtils';
+import { TrashManager } from '../common/utils/TrashManager';
 
 // API Key 存储文件名
 const API_KEY_FILE = '.deepseek_api_key';
@@ -79,8 +81,15 @@ export struct SmartClassifyTab {
   @State showApiKeyInput: boolean = false;
   @State apiKeyInput: string = '';
   @State useAISummary: boolean = true;
+  // 差异对比相关状态
+  @State showDiffPanel: boolean = false;
+  @State diffFile1: string = '';
+  @State diffFile2: string = '';
+  @State diffResult: DiffResult | null = null;
+  @State isDeleting: boolean = false;
   private contentParser: ContentParser | null = null;
   private documentContents: Map<string, string> = new Map();
+  private trashManager: TrashManager | null = null;
 
   private filesDir: string = '';
   private similarityCalculator: SimilarityCalculator | null = null;
@@ -94,6 +103,8 @@ export struct SmartClassifyTab {
     this.similarityCalculator = SimilarityCalculator.getInstance(context);
     // 初始化 ContentParser
     this.contentParser = ContentParser.getInstance(context);
+    // 初始化 TrashManager
+    this.trashManager = TrashManager.getInstance(context);
 
     // 初始化类别颜色
     this.initCategoryColors();
@@ -544,6 +555,94 @@ export struct SmartClassifyTab {
     }
   }
 
+  // 显示差异对比
+  private async showDiff(file1: string, file2: string): Promise<void> {
+    const content1 = this.documentContents.get(file1) || '';
+    const content2 = this.documentContents.get(file2) || '';
+
+    if (!content1 || !content2) {
+      this.showToast('无法读取文件内容', 'error');
+      return;
+    }
+
+    this.diffFile1 = file1;
+    this.diffFile2 = file2;
+    this.diffResult = DiffUtils.diff(content1, content2);
+    this.showDiffPanel = true;
+  }
+
+  // 删除重复文件（移动到回收站）
+  private async deleteDuplicate(fileToDelete: string): Promise<void> {
+    if (this.isDeleting || !this.trashManager) return;
+    this.isDeleting = true;
+
+    try {
+      if (this.trashManager.moveToTrash(fileToDelete)) {
+        // 从列表中移除
+        this.fileList = this.fileList.filter((f: FileAnalysis): boolean => f.filename !== fileToDelete);
+        this.documentContents.delete(fileToDelete);
+
+        // 从相似文档中移除相关项
+        this.similarDocs = this.similarDocs.filter((doc: SimilarDoc): boolean =>
+          doc.file1 !== fileToDelete && doc.file2 !== fileToDelete
+        );
+
+        this.showToast(`已移至回收站: ${fileToDelete}`, 'success');
+        this.showDiffPanel = false;
+      } else {
+        this.showToast('删除失败', 'error');
+      }
+    } catch (error) {
+      console.error('[SmartClassifyTab] 删除文件失败:', JSON.stringify(error));
+      this.showToast('删除失败', 'error');
+    } finally {
+      this.isDeleting = false;
+    }
+  }
+
+  // 一键删除所有100%重复文件（移动到回收站）
+  private async deleteAllDuplicates(): Promise<void> {
+    if (this.isDeleting || !this.trashManager) return;
+
+    const duplicates = this.similarDocs.filter((doc: SimilarDoc): boolean => doc.score >= 0.99);
+    if (duplicates.length === 0) {
+      this.showToast('没有完全重复的文件', 'info');
+      return;
+    }
+
+    this.isDeleting = true;
+    let deleted = 0;
+    const toDelete = new Set<string>();
+
+    // 收集要删除的文件（每对保留第一个）
+    duplicates.forEach((doc: SimilarDoc): void => {
+      if (!toDelete.has(doc.file1)) {
+        toDelete.add(doc.file2);
+      }
+    });
+
+    // 执行删除（移动到回收站）
+    toDelete.forEach((filename: string): void => {
+      if (this.trashManager && this.trashManager.moveToTrash(filename)) {
+        deleted++;
+      }
+    });
+
+    // 更新列表
+    this.fileList = this.fileList.filter((f: FileAnalysis): boolean => !toDelete.has(f.filename));
+    toDelete.forEach((filename: string): void => {
+      this.documentContents.delete(filename);
+    });
+
+    // 更新相似文档列表
+    this.similarDocs = this.similarDocs.filter((doc: SimilarDoc): boolean =>
+      !toDelete.has(doc.file1) && !toDelete.has(doc.file2)
+    );
+
+    this.showToast(`已移至回收站 ${deleted} 个文件`, 'success');
+    this.isDeleting = false;
+  }
+
 
   // 批量分析文件
   private async analyzeAllFiles(): Promise<void> {
@@ -901,6 +1000,22 @@ export struct SmartClassifyTab {
             Text(`${this.similarDocs.length} 对`)
               .fontSize(12)
               .fontColor('#8E8E93')
+
+            // 一键去重按钮
+            if (this.similarDocs.some((d: SimilarDoc): boolean => d.score >= 0.99)) {
+              Button('一键去重')
+                .height(28)
+                .fontSize(12)
+                .backgroundColor('#FF3B30')
+                .fontColor(Color.White)
+                .borderRadius(6)
+                .margin({ left: 8 })
+                .enabled(!this.isDeleting)
+                .onClick((): void => {
+                  this.deleteAllDuplicates();
+                })
+            }
+
             Button('收起')
               .height(28)
               .fontSize(12)
@@ -916,15 +1031,17 @@ export struct SmartClassifyTab {
           .margin({ bottom: 8 })
 
           List({ space: 6 }) {
-            ForEach(this.similarDocs.slice(0, 5), (doc: SimilarDoc) => {
+            ForEach(this.similarDocs.slice(0, 10), (doc: SimilarDoc) => {
               ListItem() {
                 Column() {
                   Row() {
+                    // 相似度标签
                     Text(`${(doc.score * 100).toFixed(0)}%`)
                       .fontSize(14)
                       .fontWeight(FontWeight.Bold)
-                      .fontColor('#FF9500')
+                      .fontColor(doc.score >= 0.99 ? '#FF3B30' : '#FF9500')
                       .width(45)
+
                     Column() {
                       Text(doc.file1)
                         .fontSize(12)
@@ -940,6 +1057,31 @@ export struct SmartClassifyTab {
                     }
                     .layoutWeight(1)
                     .alignItems(HorizontalAlign.Start)
+
+                    // 操作按钮
+                    Row({ space: 4 }) {
+                      Button('对比')
+                        .height(26)
+                        .fontSize(11)
+                        .backgroundColor('#007AFF')
+                        .fontColor(Color.White)
+                        .borderRadius(4)
+                        .onClick((): void => {
+                          this.showDiff(doc.file1, doc.file2);
+                        })
+
+                      if (doc.score >= 0.99) {
+                        Button('删除')
+                          .height(26)
+                          .fontSize(11)
+                          .backgroundColor('#FF3B30')
+                          .fontColor(Color.White)
+                          .borderRadius(4)
+                          .onClick((): void => {
+                            this.deleteDuplicate(doc.file2);
+                          })
+                      }
+                    }
                   }
                   .width('100%')
 
@@ -963,7 +1105,7 @@ export struct SmartClassifyTab {
             })
           }
           .width('100%')
-          .height(this.similarDocs.length > 3 ? 150 : this.similarDocs.length * 55)
+          .height(this.similarDocs.length > 3 ? 180 : this.similarDocs.length * 65)
         }
         .width('100%')
         .padding(12)
@@ -1336,6 +1478,163 @@ export struct SmartClassifyTab {
         .backgroundColor(Color.White)
         .borderRadius(16)
         .position({ x: '7.5%', y: '30%' })
+      }
+
+      // 差异对比弹窗
+      if (this.showDiffPanel && this.diffResult) {
+        Stack()
+          .width('100%')
+          .height('100%')
+          .backgroundColor('rgba(0, 0, 0, 0.5)')
+          .onClick((): void => {
+            this.showDiffPanel = false;
+          })
+          .position({ x: 0, y: 0 })
+
+        Column() {
+          // 标题栏
+          Row() {
+            Text('文档对比')
+              .fontSize(18)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#333333')
+            Blank()
+            Button('×')
+              .fontSize(20)
+              .fontColor('#666666')
+              .backgroundColor(Color.Transparent)
+              .onClick((): void => {
+                this.showDiffPanel = false;
+              })
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 12, bottom: 8 })
+
+          // 文件名
+          Row() {
+            Column() {
+              Text('文件1')
+                .fontSize(11)
+                .fontColor('#8E8E93')
+              Text(this.diffFile1)
+                .fontSize(12)
+                .fontColor('#333333')
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+
+            Column() {
+              Text('文件2')
+                .fontSize(11)
+                .fontColor('#8E8E93')
+              Text(this.diffFile2)
+                .fontSize(12)
+                .fontColor('#333333')
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.End)
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, bottom: 8 })
+
+          // 统计信息
+          Row({ space: 12 }) {
+            Text(`相同: ${this.diffResult.sameCount}`)
+              .fontSize(12)
+              .fontColor('#34C759')
+            Text(`删除: ${this.diffResult.removedCount}`)
+              .fontSize(12)
+              .fontColor('#FF3B30')
+            Text(`新增: ${this.diffResult.addedCount}`)
+              .fontSize(12)
+              .fontColor('#007AFF')
+            Text(`相似度: ${(this.diffResult.similarity * 100).toFixed(0)}%`)
+              .fontSize(12)
+              .fontColor('#FF9500')
+              .fontWeight(FontWeight.Bold)
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, bottom: 8 })
+
+          // 差异内容
+          Scroll() {
+            Column() {
+              ForEach(this.diffResult.lines.slice(0, 100), (line: DiffLine, index: number) => {
+                Row() {
+                  Text(line.lineNum1 ? `${line.lineNum1}` : ' ')
+                    .fontSize(10)
+                    .fontColor('#8E8E93')
+                    .width(25)
+                    .textAlign(TextAlign.End)
+                  Text(line.lineNum2 ? `${line.lineNum2}` : ' ')
+                    .fontSize(10)
+                    .fontColor('#8E8E93')
+                    .width(25)
+                    .textAlign(TextAlign.End)
+                    .margin({ right: 6 })
+                  Text(line.type === DiffType.ADDED ? '+' : (line.type === DiffType.REMOVED ? '-' : ' '))
+                    .fontSize(12)
+                    .fontColor(line.type === DiffType.ADDED ? '#007AFF' : (line.type === DiffType.REMOVED ? '#FF3B30' : '#8E8E93'))
+                    .width(14)
+                  Text(line.content || ' ')
+                    .fontSize(12)
+                    .fontColor(line.type === DiffType.SAME ? '#333333' : (line.type === DiffType.ADDED ? '#007AFF' : '#FF3B30'))
+                    .layoutWeight(1)
+                    .maxLines(2)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                }
+                .width('100%')
+                .padding({ top: 2, bottom: 2, left: 4, right: 4 })
+                .backgroundColor(
+                  line.type === DiffType.ADDED ? '#E3F2FD' :
+                    (line.type === DiffType.REMOVED ? '#FFEBEE' : Color.Transparent)
+                )
+              })
+            }
+            .width('100%')
+          }
+          .layoutWeight(1)
+          .backgroundColor('#FAFAFA')
+          .margin({ left: 8, right: 8 })
+          .borderRadius(8)
+
+          // 操作按钮
+          Row({ space: 12 }) {
+            Button('关闭')
+              .layoutWeight(1)
+              .height(40)
+              .backgroundColor('#E0E0E0')
+              .fontColor('#333333')
+              .borderRadius(8)
+              .onClick((): void => {
+                this.showDiffPanel = false;
+              })
+
+            if (this.diffResult.similarity >= 0.99) {
+              Button(`删除 ${this.diffFile2}`)
+                .layoutWeight(1)
+                .height(40)
+                .backgroundColor('#FF3B30')
+                .fontColor(Color.White)
+                .borderRadius(8)
+                .enabled(!this.isDeleting)
+                .onClick((): void => {
+                  this.deleteDuplicate(this.diffFile2);
+                })
+            }
+          }
+          .width('100%')
+          .padding(12)
+        }
+        .width('95%')
+        .height('80%')
+        .backgroundColor(Color.White)
+        .borderRadius(16)
+        .position({ x: '2.5%', y: '10%' })
       }
     }
     .width('100%')

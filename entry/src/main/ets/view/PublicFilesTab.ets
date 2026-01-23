@@ -23,6 +23,7 @@ import { common } from "@kit.AbilityKit"
 import { BusinessError } from '@kit.BasicServicesKit'
 import fs from '@ohos.file.fs';
 import { filePreview } from '@kit.PreviewKit';
+import { TrashManager } from '../common/utils/TrashManager';
 
 /**
  * Preview configuration interface
@@ -63,9 +64,12 @@ export struct publicFilesTab {
   @State showFileActionPanel: boolean = false;
   @State selectedFileForPanel: string = '';
 
+  private trashManager: TrashManager | null = null;
+
   aboutToAppear() {
     let context = this.getUIContext().getHostContext() as Context;
     this.fileManager = new FileManager(context);
+    this.trashManager = TrashManager.getInstance(context);
     // initDeleteUtils(context);
     // this.searchFilesWithInfo();
     this.loadFileListWithInfo();
@@ -114,34 +118,10 @@ export struct publicFilesTab {
   }
 
   private deleteFile(fileName: string): boolean {
-    try {
-      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
-      const sandboxDir: string = context.filesDir;
-      const filePath: string = sandboxDir + '/' + fileName;
-
-      // 检查文件是否存在
-      try {
-        const stats = fs.statSync(filePath);
-        if (!stats.isFile()) {
-          return false;
-        }
-      } catch (error) {
-        return false;
-      }
-
-      // 直接删除文件
-      fs.unlinkSync(filePath);
-
-      console.log(`已永久删除: ${fileName}`) ;
-      console.info('FileTab', `文件 ${fileName} 已删除`);
-      return true;
-
-    } catch (error) {
-      const err = error as BusinessError;
-      console.error('FileTab', `删除文件失败:`, err);
-      console.log(`删除失败: ${err.message}`);
+    if (!this.trashManager) {
       return false;
     }
+    return this.trashManager.moveToTrash(fileName);
   }
 
   // 执行删除文件的方法
@@ -149,7 +129,7 @@ export struct publicFilesTab {
     console.log(`执行删除文件: ${filename}`);
     const success = this.deleteFile(filename);
     if (success) {
-      console.log(`文件 ${filename} 删除成功`);
+      console.log(`文件 ${filename} 已移至回收站`);
       await this.loadFileListWithInfo();
 
       if (this.selectedFile === filename) {
@@ -158,7 +138,7 @@ export struct publicFilesTab {
         this.showFileContent = false;
       }
 
-      this.saveMessage = `文件 "${filename}" 已删除`;
+      this.saveMessage = `文件 "${filename}" 已移至回收站`;
       this.showSaveSuccess = true;
       setTimeout(() => {
         this.showSaveSuccess = false;
