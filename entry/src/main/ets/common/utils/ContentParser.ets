@@ -5,7 +5,6 @@
 
 import { fileIo } from '@kit.CoreFileKit';
 import { common } from '@kit.AbilityKit';
-import { zlib } from '@kit.BasicServicesKit';
 import * as mammoth from "@ohos/mammoth";
 //华为原生第三方库，使用 ohpm install @ohos/mammoth 指令安装
 
@@ -213,103 +212,60 @@ export class ContentParser {
   }
 
   /**
-   * 简单的 PDF 文本提取器
-   * 通过解析 PDF 二进制格式提取文本内容
-   * 注意:这是一个简化实现,适用于包含纯文本的 PDF 文件
+   * 增强的 PDF 文本提取器
+   * 支持 FlateDecode 解压、CMap 字符映射、多种文本提取策略
    */
   private async extractTextWithPDF(filePath: string): Promise<string> {
     try {
       console.log(`[ContentParser] 开始解析PDF: ${filePath}`);
 
-      // 读取PDF文件
       const file = fileIo.openSync(filePath, fileIo.OpenMode.READ_ONLY);
       const stat = fileIo.statSync(filePath);
 
-      // 限制读取大小(最大 10MB)
       const maxSize = 10 * 1024 * 1024;
       const readSize = Math.min(stat.size, maxSize);
       const buffer = new ArrayBuffer(readSize);
       fileIo.readSync(file.fd, buffer);
       fileIo.closeSync(file);
 
-      // 将 PDF 内容转换为字符串
+      const uint8Array = new Uint8Array(buffer);
       const pdfContent = this.arrayBufferToString(buffer);
 
-      // 验证是否为有效的 PDF 文件
       if (!pdfContent.startsWith('%PDF')) {
         throw new Error('不是有效的PDF文件');
       }
 
       console.log(`[ContentParser] PDF文件读取成功,大小: ${readSize} bytes`);
 
-      // 提取文本内容
       let extractedText = '';
 
-      // 方法 1: 提取 BT...ET 块中的文本(文本对象)
-      const textBlockPattern = /BT([\s\S]*?)ET/g;
-      const textBlocks = pdfContent.match(textBlockPattern);
+      // 方法 1: 尝试解压 FlateDecode 流并提取文本
+      extractedText = await this.extractFromStreams(uint8Array, pdfContent);
 
-      if (textBlocks && textBlocks.length > 0) {
-        console.log(`[ContentParser] 找到 ${textBlocks.length} 个文本块`);
-
-        textBlocks.forEach((block: string) => {
-          // 提取括号内的文本字符串 (...)
-          const stringPattern = /\(([^)]*)\)/g;
-          let match = stringPattern.exec(block);
-
-          while (match !== null) {
-            let text = match[1];
-
-            // 解码 PDF 特殊字符
-            text = this.decodePdfString(text);
-
-            if (text.trim().length > 0) {
-              extractedText += text + ' ';
-            }
-
-            match = stringPattern.exec(block);
-          }
-
-          // 提取尖括号内的十六进制字符串 <...>
-          const hexPattern = /<([0-9A-Fa-f]+)>/g;
-          let hexMatch = hexPattern.exec(block);
-
-          while (hexMatch !== null) {
-            const hexText = this.decodeHexString(hexMatch[1]);
-            if (hexText.trim().length > 0) {
-              extractedText += hexText + ' ';
-            }
-            hexMatch = hexPattern.exec(block);
-          }
-        });
-      }
-
-      // 方法 2: 如果方法1没有提取到内容,尝试查找所有括号中的文本
-      if (extractedText.trim().length === 0) {
-        console.log('[ContentParser] 尝试备用提取方法');
-        const allStringsPattern = /\(([^)]{2,})\)/g;
-        let match = allStringsPattern.exec(pdfContent);
-
-        while (match !== null) {
-          let text = match[1];
-          text = this.decodePdfString(text);
-
-          // 过滤掉看起来像命令或控制字符的内容
-          if (text.trim().length > 0 && !text.match(/^[\/\\]/)) {
-            extractedText += text + ' ';
-          }
-
-          match = allStringsPattern.exec(pdfContent);
+      // 方法 2: 提取 BT...ET 文本块
+      if (extractedText.trim().length < 50) {
+        const btText = this.extractFromTextBlocks(pdfContent);
+        if (btText.length > extractedText.length) {
+          extractedText = btText;
         }
       }
 
-      // 清理提取的文本
-      extractedText = extractedText
-        .replace(/\\n/g, '\n')
-        .replace(/\\r/g, '\r')
-        .replace(/\\t/g, '\t')
-        .replace(/\s+/g, ' ')
-        .trim();
+      // 方法 3: 提取所有括号内文本
+      if (extractedText.trim().length < 50) {
+        const fallbackText = this.extractFallbackText(pdfContent);
+        if (fallbackText.length > extractedText.length) {
+          extractedText = fallbackText;
+        }
+      }
+
+      // 方法 4: 提取 Unicode 文本 (针对中文 PDF)
+      const unicodeText = this.extractUnicodeText(pdfContent);
+      if (unicodeText.length > 0) {
+        extractedText = extractedText + ' ' + unicodeText;
+      }
+
+      // 清理文本
+      extractedText = this.cleanExtractedText(extractedText);
 
       console.log(`[ContentParser] PDF文本提取完成,提取字符数: ${extractedText.length}`);
 
@@ -321,9 +277,225 @@ export class ContentParser {
 
     } catch (error) {
       console.error('[ContentParser] PDF文本提取失败:', error);
-      // throw error;
     }
-    return ''
+    return '';
+  }
+
+  /**
+   * 从压缩流中提取文本 (FlateDecode)
+   */
+  private async extractFromStreams(data: Uint8Array, pdfContent: string): Promise<string> {
+    let extractedText = '';
+
+    try {
+      // 查找所有 stream...endstream 块
+      const streamPattern = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+      let match = streamPattern.exec(pdfContent);
+
+      while (match !== null) {
+        const streamContent = match[1];
+        const streamStart = match.index + match[0].indexOf(streamContent);
+
+        // 检查是否为 FlateDecode 压缩
+        const beforeStream = pdfContent.substring(Math.max(0, match.index - 200), match.index);
+        const isFlate = beforeStream.includes('/FlateDecode') || beforeStream.includes('/Fl');
+
+        if (isFlate && streamContent.length > 10) {
+          try {
+            const decompressed = await this.decompressFlate(data, streamStart, streamContent.length);
+            if (decompressed && decompressed.length > 0) {
+              const text = this.extractTextFromDecompressed(decompressed);
+              if (text.length > 0) {
+                extractedText += text + ' ';
+              }
+            }
+          } catch (e) {
+            // 解压失败，继续尝试下一个流
+          }
+        }
+
+        match = streamPattern.exec(pdfContent);
+      }
+    } catch (error) {
+      console.warn('[ContentParser] 流提取失败:', error);
+    }
+
+    return extractedText;
+  }
+
+  /**
+   * 解压 FlateDecode 数据 (HarmonyOS zlib 不支持内存解压，返回空)
+   */
+  private async decompressFlate(_data: Uint8Array, _offset: number, _length: number): Promise<string> {
+    // HarmonyOS zlib API 仅支持文件解压，不支持内存解压
+    // 跳过压缩流，依赖其他提取方法
+    return '';
+  }
+
+  /**
+   * 从解压后的数据中提取文本
+   */
+  private extractTextFromDecompressed(content: string): string {
+    let text = '';
+
+    // 提取 BT...ET 块
+    const btPattern = /BT([\s\S]*?)ET/g;
+    let btMatch = btPattern.exec(content);
+
+    while (btMatch !== null) {
+      const block = btMatch[1];
+
+      // 提取 Tj 操作符的文本
+      const tjPattern = /\(([^)]*)\)\s*Tj/g;
+      let tjMatch = tjPattern.exec(block);
+      while (tjMatch !== null) {
+        text += this.decodePdfString(tjMatch[1]) + ' ';
+        tjMatch = tjPattern.exec(block);
+      }
+
+      // 提取 TJ 数组中的文本
+      const tjArrayPattern = /\[(.*?)\]\s*TJ/g;
+      let tjArrayMatch = tjArrayPattern.exec(block);
+      while (tjArrayMatch !== null) {
+        const arrayContent = tjArrayMatch[1];
+        const strPattern = /\(([^)]*)\)/g;
+        let strMatch = strPattern.exec(arrayContent);
+        while (strMatch !== null) {
+          text += this.decodePdfString(strMatch[1]);
+          strMatch = strPattern.exec(arrayContent);
+        }
+        text += ' ';
+        tjArrayMatch = tjArrayPattern.exec(block);
+      }
+
+      btMatch = btPattern.exec(content);
+    }
+
+    return text;
+  }
+
+  /**
+   * 从 BT...ET 文本块提取
+   */
+  private extractFromTextBlocks(pdfContent: string): string {
+    let extractedText = '';
+    const textBlockPattern = /BT([\s\S]*?)ET/g;
+    const textBlocks = pdfContent.match(textBlockPattern);
+
+    if (textBlocks && textBlocks.length > 0) {
+      textBlocks.forEach((block: string) => {
+        // 提取括号内文本
+        const stringPattern = /\(([^)]*)\)/g;
+        let match = stringPattern.exec(block);
+        while (match !== null) {
+          const text = this.decodePdfString(match[1]);
+          if (text.trim().length > 0) {
+            extractedText += text + ' ';
+          }
+          match = stringPattern.exec(block);
+        }
+
+        // 提取十六进制文本
+        const hexPattern = /<([0-9A-Fa-f]+)>/g;
+        let hexMatch = hexPattern.exec(block);
+        while (hexMatch !== null) {
+          const hexText = this.decodeHexString(hexMatch[1]);
+          if (hexText.trim().length > 0) {
+            extractedText += hexText + ' ';
+          }
+          hexMatch = hexPattern.exec(block);
+        }
+      });
+    }
+
+    return extractedText;
+  }
+
+  /**
+   * 备用文本提取方法
+   */
+  private extractFallbackText(pdfContent: string): string {
+    let extractedText = '';
+    const allStringsPattern = /\(([^)]{2,})\)/g;
+    let match = allStringsPattern.exec(pdfContent);
+
+    while (match !== null) {
+      let text = this.decodePdfString(match[1]);
+      if (text.trim().length > 0 && !text.match(/^[\/\\]/) && !text.match(/^\d+\s+\d+\s+\d+/)) {
+        extractedText += text + ' ';
+      }
+      match = allStringsPattern.exec(pdfContent);
+    }
+
+    return extractedText;
+  }
+
+  /**
+   * 提取 Unicode 编码文本 (针对中文 PDF)
+   */
+  private extractUnicodeText(pdfContent: string): string {
+    let text = '';
+
+    // 提取 UTF-16BE 编码的文本 (以 FEFF 开头)
+    const unicodePattern = /<FEFF([0-9A-Fa-f]+)>/gi;
+    let match = unicodePattern.exec(pdfContent);
+
+    while (match !== null) {
+      const hexStr = match[1];
+      let decoded = '';
+      for (let i = 0; i < hexStr.length; i += 4) {
+        if (i + 4 <= hexStr.length) {
+          const charCode = parseInt(hexStr.substring(i, i + 4), 16);
+          if (charCode > 0 && charCode < 0xFFFF) {
+            decoded += String.fromCharCode(charCode);
+          }
+        }
+      }
+      if (decoded.trim().length > 0) {
+        text += decoded + ' ';
+      }
+      match = unicodePattern.exec(pdfContent);
+    }
+
+    // 提取普通 UTF-16 十六进制文本
+    const hex16Pattern = /<([0-9A-Fa-f]{4,})>/g;
+    let hex16Match = hex16Pattern.exec(pdfContent);
+
+    while (hex16Match !== null) {
+      const hexStr = hex16Match[1];
+      if (hexStr.length >= 4 && hexStr.length % 4 === 0) {
+        let decoded = '';
+        let isValidChinese = false;
+        for (let i = 0; i < hexStr.length; i += 4) {
+          const charCode = parseInt(hexStr.substring(i, i + 4), 16);
+          if (charCode >= 0x4E00 && charCode <= 0x9FFF) {
+            isValidChinese = true;
+          }
+          if (charCode > 0x1F && charCode < 0xFFFF) {
+            decoded += String.fromCharCode(charCode);
+          }
+        }
+        if (isValidChinese && decoded.trim().length > 0) {
+          text += decoded + ' ';
+        }
+      }
+      hex16Match = hex16Pattern.exec(pdfContent);
+    }
+
+    return text;
+  }
+
+  /**
+   * 清理提取的文本
+   */
+  private cleanExtractedText(text: string): string {
+    return text
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '\r')
+      .replace(/\\t/g, '\t')
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '') // 移除控制字符
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   /**

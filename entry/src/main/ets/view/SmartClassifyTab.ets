@@ -27,6 +27,14 @@ interface FileAnalysis {
   isAnalyzed: boolean;
 }
 
+// 相似文档结果
+interface SimilarDoc {
+  file1: string;
+  file2: string;
+  score: number;
+  sharedTerms: string[];
+}
+
 // 类别统计
 interface CategoryStat {
   category: DocumentCategory;
@@ -62,7 +70,10 @@ export struct SmartClassifyTab {
   @State messageText: string = '';
   @State messageType: string = 'info';
   @State analyzedCount: number = 0;
-  private contentParser: ContentParser | null = null; // 新增
+  @State similarDocs: SimilarDoc[] = [];
+  @State showSimilarPanel: boolean = false;
+  private contentParser: ContentParser | null = null;
+  private documentContents: Map<string, string> = new Map();
 
   private filesDir: string = '';
   private similarityCalculator: SimilarityCalculator | null = null;
@@ -353,6 +364,9 @@ export struct SmartClassifyTab {
         return null;
       }
 
+      // 存储内容用于相似度计算
+      this.documentContents.set(file.filename, content);
+
       const classification = this.classifyLocal(content);
       const keywords = this.extractKeywords(content);
       const summary = this.generateSummary(content);
@@ -370,6 +384,42 @@ export struct SmartClassifyTab {
     } catch (error) {
       console.error('[SmartClassifyTab] 分析文件失败:', file.filename, JSON.stringify(error));
       return null;
+    }
+  }
+
+  // 计算文档相似度
+  private async calculateSimilarity(): Promise<void> {
+    if (!this.similarityCalculator || this.documentContents.size < 2) {
+      return;
+    }
+
+    try {
+      this.showToast('正在计算文档相似度...', 'info');
+
+      const results = await this.similarityCalculator.batchCalculateSimilarity(
+        this.documentContents,
+        0.25 // 相似度阈值
+      );
+
+      // 转换为 SimilarDoc 格式
+      const similarResults: SimilarDoc[] = [];
+      results.forEach((r): void => {
+        similarResults.push({
+          file1: r.file1,
+          file2: r.file2,
+          score: r.score,
+          sharedTerms: r.sharedTerms
+        });
+      });
+
+      this.similarDocs = similarResults.slice(0, 20); // 最多显示20对
+
+      if (this.similarDocs.length > 0) {
+        this.showToast(`发现 ${this.similarDocs.length} 对相似文档`, 'success');
+        this.showSimilarPanel = true;
+      }
+    } catch (error) {
+      console.error('[SmartClassifyTab] 相似度计算失败:', JSON.stringify(error));
     }
   }
 
@@ -416,6 +466,11 @@ export struct SmartClassifyTab {
       }
 
       this.showToast(`分析完成！共分析 ${analyzed} 个文件`, 'success');
+
+      // 计算相似度
+      if (analyzed >= 2) {
+        await this.calculateSimilarity();
+      }
     } catch (error) {
       console.error('[SmartClassifyTab] 分析过程出错:', JSON.stringify(error));
       this.showToast('分析过程出错', 'error');
@@ -553,6 +608,20 @@ export struct SmartClassifyTab {
           .fontColor(Color.White)
           .borderRadius(8)
           .layoutWeight(1)
+
+        // 相似文档按钮
+        if (this.similarDocs.length > 0 && !this.showSimilarPanel) {
+          Button(`相似(${this.similarDocs.length})`)
+            .onClick((): void => {
+              this.showSimilarPanel = true;
+            })
+            .height(40)
+            .fontSize(14)
+            .backgroundColor('#FF9500')
+            .fontColor(Color.White)
+            .borderRadius(8)
+            .width(80)
+        }
       }
       .width('100%')
       .padding({ left: 16, right: 16, bottom: 12 })
@@ -664,6 +733,89 @@ export struct SmartClassifyTab {
         .width('100%')
         .height(70)
         .margin({ bottom: 12 })
+      }
+
+      // 相似文档面板
+      if (this.showSimilarPanel && this.similarDocs.length > 0) {
+        Column() {
+          Row() {
+            Text('相似文档')
+              .fontSize(16)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#333333')
+            Blank()
+            Text(`${this.similarDocs.length} 对`)
+              .fontSize(12)
+              .fontColor('#8E8E93')
+            Button('收起')
+              .height(28)
+              .fontSize(12)
+              .backgroundColor('#E0E0E0')
+              .fontColor('#666666')
+              .borderRadius(6)
+              .margin({ left: 8 })
+              .onClick((): void => {
+                this.showSimilarPanel = false;
+              })
+          }
+          .width('100%')
+          .margin({ bottom: 8 })
+
+          List({ space: 6 }) {
+            ForEach(this.similarDocs.slice(0, 5), (doc: SimilarDoc) => {
+              ListItem() {
+                Column() {
+                  Row() {
+                    Text(`${(doc.score * 100).toFixed(0)}%`)
+                      .fontSize(14)
+                      .fontWeight(FontWeight.Bold)
+                      .fontColor('#FF9500')
+                      .width(45)
+                    Column() {
+                      Text(doc.file1)
+                        .fontSize(12)
+                        .fontColor('#333333')
+                        .maxLines(1)
+                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      Text(doc.file2)
+                        .fontSize(12)
+                        .fontColor('#666666')
+                        .maxLines(1)
+                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                        .margin({ top: 2 })
+                    }
+                    .layoutWeight(1)
+                    .alignItems(HorizontalAlign.Start)
+                  }
+                  .width('100%')
+
+                  if (doc.sharedTerms.length > 0) {
+                    Row() {
+                      Text('共同词: ')
+                        .fontSize(10)
+                        .fontColor('#8E8E93')
+                      Text(doc.sharedTerms.slice(0, 3).join(', '))
+                        .fontSize(10)
+                        .fontColor('#007AFF')
+                    }
+                    .width('100%')
+                    .margin({ top: 4 })
+                  }
+                }
+                .padding(8)
+                .backgroundColor('#FAFAFA')
+                .borderRadius(8)
+              }
+            })
+          }
+          .width('100%')
+          .height(this.similarDocs.length > 3 ? 150 : this.similarDocs.length * 55)
+        }
+        .width('100%')
+        .padding(12)
+        .backgroundColor('#FFF8E1')
+        .borderRadius(12)
+        .margin({ left: 16, right: 16, bottom: 12 })
       }
 
       // 搜索框
