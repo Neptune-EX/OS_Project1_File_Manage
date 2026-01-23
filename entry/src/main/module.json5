@@ -1,3 +1,71 @@
+//{
+//  "module": {
+//    "name": "entry",
+//    "type": "entry",
+//    "description": "$string:module_desc",
+//    "mainElement": "EntryAbility",
+//    "deviceTypes": [
+//      "phone",
+//      "tablet",
+//      "2in1"
+//    ],
+//    "deliveryWithInstall": true,
+//    "installationFree": false,
+//    "pages": "$profile:main_pages",
+//    "abilities": [
+//      {
+//        "name": "EntryAbility",
+//        "srcEntry": "./ets/entryability/EntryAbility.ets",
+//        "description": "$string:EntryAbility_desc",
+//        "icon": "$media:appiconnew",
+//        "label": "$string:EntryAbility_label",
+//        "startWindowIcon": "$media:scrrenicon",
+//        "startWindowBackground": "$color:start_window_background",
+//        "exported": true,
+//        "skills": [
+//          {
+//            "entities": [
+//              "entity.system.home"
+//            ],
+//            "actions": [
+//              "action.system.home"
+//            ]
+//          },
+//
+//          {
+//            "entities": [
+//              "entity.system.browsable"
+//            ],
+//            "actions": [
+//              "action.system.home",
+//              "android.intent.action.VIEW",
+//              "ohos.want.action.viewData"
+//            ],
+//            "uris": [
+//              {
+//                "scheme": "file",
+//                "host": "*",
+//                "type": "*/*"
+//              },
+//              {
+//                "scheme": "internal",
+//                "host": "app",
+//                "type": "*/*"
+//              },
+//              {
+//                "scheme": "dataability",
+//                "host": "*",
+//                "type": "*/*"
+//              }
+//            ]
+//          }
+//
+//        ],
+//      }
+//    ]
+//  }
+//}
+//
 {
   "module": {
     "name": "entry",
@@ -30,8 +98,79 @@
             "actions": [
               "action.system.home"
             ]
+          },
+          {
+            "entities": [
+              "entity.system.browsable"
+            ],
+            "actions": [
+              "action.system.home",
+              "android.intent.action.VIEW",
+              "ohos.want.action.viewData"
+            ],
+            "uris": [
+              {
+                "scheme": "file",
+                "host": "*",
+                "type": "*/*"
+              },
+              {
+                "scheme": "internal",
+                "host": "app",
+                "type": "*/*"
+              },
+              {
+                "scheme": "dataability",
+                "host": "*",
+                "type": "*/*"
+              }
+            ]
+          }
+        ],
+        "metadata": [
+          {
+            "name": "ohos.ability.filetypes",
+            "value": "pdf,doc,docx,xls,xlsx,ppt,pptx,txt,rtf,jpg,jpeg,png,gif,bmp,mp3,mp4,avi,mov,zip,rar,7z"
           }
         ]
+      }
+    ],
+    "requestPermissions": [
+      {
+        "name": "ohos.permission.READ_MEDIA",
+        "reason": "$string:read_media_reason",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "always"
+        }
+      },
+      {
+        "name": "ohos.permission.WRITE_MEDIA",
+        "reason": "$string:write_media_reason",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "always"
+        }
+      },
+      {
+        "name": "ohos.permission.MEDIA_LOCATION",
+        "reason": "$string:media_location_reason",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "always"
+        }
+      }
+    ],
+    "dependencies": [
+      {
+        "bundleName": "com.ohos.previewkit",
+        "moduleName": "previewkit",
+        "versionCode": 1000000
+      },
+      {
+        "bundleName": "com.ohos.fileaccess",
+        "moduleName": "fileaccess",
+        "versionCode": 1000000
       }
     ]
   }

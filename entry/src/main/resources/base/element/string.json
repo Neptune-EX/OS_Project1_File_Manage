@@ -167,6 +167,46 @@
     {
       "name": "hot_keywords",
       "value": "热门关键词"
+    },
+    {
+      "name": "app_name",
+      "value": "文件管理器"
+    },
+    {
+      "name": "app_desc",
+      "value": "文件管理和预览应用"
+    },
+    {
+      "name": "file_pdf_desc",
+      "value": "PDF文档"
+    },
+    {
+      "name": "file_docx_desc",
+      "value": "Word文档"
+    },
+    {
+      "name": "file_txt_desc",
+      "value": "文本文件"
+    },
+    {
+      "name": "file_jpg_desc",
+      "value": "JPEG图片"
+    },
+    {
+      "name": "file_png_desc",
+      "value": "PNG图片"
+    },
+    {
+      "name": "read_media_reason",
+      "value": "需要读取媒体文件以进行文件预览和管理"
+    },
+    {
+      "name": "write_media_reason",
+      "value": "需要写入媒体文件以保存和编辑文件"
+    },
+    {
+      "name": "media_location_reason",
+      "value": "需要获取媒体文件的地理位置信息以进行文件分类"
     }
   ]
 }

@@ -68,41 +68,41 @@ struct HomePage {
           .labelStyle({font : {size : $r('app.float.default_16')}})
         )
 
-        TabContent() {
-          Scroll() {
-            DeduplicationTab()
-          }
-          .height($r('app.float.default_680'))
-        }
-        .height('100%')
-        .tabBar(new SubTabBarStyle($r('app.string.bar3'))
-          .indicator({marginTop : $r('app.float.default_8')})
-          .labelStyle({font : {size : $r('app.float.default_16')}})
-        )
+        // TabContent() {
+        //   Scroll() {
+        //     DeduplicationTab()
+        //   }
+        //   .height($r('app.float.default_680'))
+        // }
+        // .height('100%')
+        // .tabBar(new SubTabBarStyle($r('app.string.bar3'))
+        //   .indicator({marginTop : $r('app.float.default_8')})
+        //   .labelStyle({font : {size : $r('app.float.default_16')}})
+        // )
 
-        TabContent() {
-          Scroll() {
-            TrashTab()
-          }
-          .height($r('app.float.default_680'))
-        }
-        .height('100%')
-        .tabBar(new SubTabBarStyle($r('app.string.bar4'))
-          .indicator({marginTop : $r('app.float.default_8')})
-          .labelStyle({font : {size : $r('app.float.default_16')}})
-        )
-
-        TabContent() {
-          Scroll() {
-            TestDataTab()
-          }
-          .height($r('app.float.default_680'))
-        }
-        .height('100%')
-        .tabBar(new SubTabBarStyle($r('app.string.bar5'))
-          .indicator({marginTop : $r('app.float.default_8')})
-          .labelStyle({font : {size : $r('app.float.default_16')}})
-        )
+        // TabContent() {
+        //   Scroll() {
+        //     TrashTab()
+        //   }
+        //   .height($r('app.float.default_680'))
+        // }
+        // .height('100%')
+        // .tabBar(new SubTabBarStyle($r('app.string.bar4'))
+        //   .indicator({marginTop : $r('app.float.default_8')})
+        //   .labelStyle({font : {size : $r('app.float.default_16')}})
+        // )
+        //
+        // TabContent() {
+        //   Scroll() {
+        //     TestDataTab()
+        //   }
+        //   .height($r('app.float.default_680'))
+        // }
+        // .height('100%')
+        // .tabBar(new SubTabBarStyle($r('app.string.bar5'))
+        //   .indicator({marginTop : $r('app.float.default_8')})
+        //   .labelStyle({font : {size : $r('app.float.default_16')}})
+        // )
 
         TabContent() {
           Scroll() {
