@@ -212,78 +212,12 @@ export struct ApplicationFileTab {
           .onClick((): void => {
             this.copyAllRawFilesToSandbox();
           })
-        //
-        // Button('清空沙箱')
-        //   .width('45%')
-        //   .height($r('app.float.default_40'))
-        //   .fontColor('white')
-        //   .margin({ left: $r('app.float.default_12') })
-        //   .backgroundColor('#f44336')
-        //   .fontSize($r('app.float.default_14'))
-        //   .onClick((): void => {
-        //     this.clearSandboxFiles();
-        //   })
+
       }
       .width('90%')
       .justifyContent(FlexAlign.Center)
       .margin({ bottom: $r('app.float.default_10') })
 
-      // 沙箱文件列表显示
-      // if (this.fileList.length > 0) {
-      //   Text('沙箱文件列表:')
-      //     .width('90%')
-      //     .height($r('app.float.default_22'))
-      //     .fontColor('black')
-      //     .fontWeight(500)
-      //     .fontSize($r('app.float.default_14'))
-      //     .textAlign(TextAlign.Start)
-      //     .margin({ bottom: $r('app.float.default_10') })
-      //
-      //   Scroll() {
-      //     Column() {
-      //       ForEach(this.fileList, (fileName: string) => {
-      //         Row() {
-      //           Text(fileName)
-      //             .width('70%')
-      //             .fontSize($r('app.float.default_12'))
-      //             .fontColor('black')
-      //             .textAlign(TextAlign.Start)
-      //
-      //           Row() {
-      //             Button('查看')
-      //               .width(50)
-      //               .height(30)
-      //               .fontSize($r('app.float.default_10'))
-      //               .backgroundColor('#2196F3')
-      //               .onClick((): void => {
-      //                 this.previewFile(fileName);
-      //               })
-      //
-      //             Button('检查')
-      //               .width(50)
-      //               .height(30)
-      //               .fontSize($r('app.float.default_10'))
-      //               .margin({ left: 5 })
-      //               .backgroundColor('#FF9800')
-      //               .onClick((): void => {
-      //                 this.checkFileExists(fileName);
-      //               })
-      //           }
-      //           .width('30%')
-      //           .justifyContent(FlexAlign.End)
-      //         }
-      //         .width('100%')
-      //         .padding(5)
-      //         .backgroundColor('#f5f5f5')
-      //         .margin({ bottom: 5 })
-      //       })
-      //     }
-      //     .width('100%')
-      //   }
-      //   .height(150)
-      //   .width('90%')
-      //   .margin({ bottom: $r('app.float.default_20') })
-      // }
 
       // 文件内容显示区域
       if (this.message) {

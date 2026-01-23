@@ -144,11 +144,12 @@ export struct SmartClassifyTab {
     this.analyzedCount = 0;
 
     try {
-      const maxFiles = 30;
-      const allFiles: string[] = fileIo.listFileSync(this.filesDir);
-      const txtFiles: string[] = allFiles.filter((f: string): boolean => {
-        return !f.startsWith('.') && f.endsWith('.txt');
-      }).slice(0, maxFiles);
+      const maxFiles = 50;
+      let allFiles: string[] = fileIo.listFileSync(this.filesDir);
+      allFiles=allFiles.filter(f => !f.startsWith('.'));
+      // const txtFiles: string[] = allFiles.filter((f: string): boolean => {
+      //   return !f.startsWith('.') && f.endsWith('.txt');
+      // }).slice(0, maxFiles);
 
       if (allFiles.length > maxFiles) {
         this.showToast(`文件过多，仅显示前${maxFiles}个`, 'warning');
@@ -158,8 +159,8 @@ export struct SmartClassifyTab {
       const batchSize = 5;
       const tempList: FileAnalysis[] = [];
 
-      for (let i = 0; i < txtFiles.length; i += batchSize) {
-        const batch: string[] = txtFiles.slice(i, i + batchSize);
+      for (let i = 0; i < allFiles.length; i += batchSize) {
+        const batch: string[] = allFiles.slice(i, i + batchSize);
         batch.forEach((filename: string): void => {
           tempList.push({
             filename: filename,
