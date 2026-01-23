@@ -207,6 +207,14 @@
     {
       "name": "media_location_reason",
       "value": "需要获取媒体文件的地理位置信息以进行文件分类"
+    },
+    {
+      "name": "media_internet_access",
+      "value":"需要网络访问权限"
+    },
+    {
+      "name": "media_internet_status",
+      "value":"需要获取网络状态"
     }
   ]
 }

@@ -386,7 +386,7 @@ ${parseResult.content.substring(0, 4000)}
             .enabled(!this.isProcessing)
         }
         .width('100%')
-        .padding({ left: 16, right: 16, bottom: 8 })
+        .padding({ left: 16, right: 16, bottom: 35 })
 
         // 输入框和发送按钮
         Row({ space: 8 }) {
@@ -415,7 +415,7 @@ ${parseResult.content.substring(0, 4000)}
             .enabled(!this.isProcessing && this.inputText.trim().length > 0)
         }
         .width('100%')
-        .padding({ left: 16, right: 16, bottom: 12 })
+        .padding({ left: 16, right: 16, bottom: 60 })
       }
       .backgroundColor('#F8F8F8')
       .borderRadius({ topLeft: 16, topRight: 16 })
