@@ -267,10 +267,16 @@ export class ContentParser {
       // 清理文本
       extractedText = this.cleanExtractedText(extractedText);
 
+      // 验证提取的文本是否有效（非乱码）
+      if (!this.isValidPdfText(extractedText)) {
+        console.warn('[ContentParser] PDF提取的文本无效或为乱码');
+        extractedText = '';
+      }
+
       console.log(`[ContentParser] PDF文本提取完成,提取字符数: ${extractedText.length}`);
 
       if (extractedText.length === 0) {
-        throw new Error('PDF中未找到可提取的文本内容');
+        throw new Error('PDF中未找到可提取的文本内容，可能是扫描版或加密PDF');
       }
 
       return extractedText;
@@ -489,13 +495,73 @@ export class ContentParser {
    * 清理提取的文本
    */
   private cleanExtractedText(text: string): string {
-    return text
+    let cleaned = text
       .replace(/\\n/g, '\n')
       .replace(/\\r/g, '\r')
       .replace(/\\t/g, '\t')
-      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '') // 移除控制字符
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // 移除控制字符
       .replace(/\s+/g, ' ')
       .trim();
+
+    // 过滤乱码：只保留可读字符
+    cleaned = this.filterReadableText(cleaned);
+
+    return cleaned;
+  }
+
+  /**
+   * 过滤保留可读文本
+   */
+  private filterReadableText(text: string): string {
+    let result = '';
+    let consecutiveGarbage = 0;
+
+    for (let i = 0; i < text.length; i++) {
+      const code = text.charCodeAt(i);
+
+      // 判断是否为可读字符
+      const isReadable =
+        (code >= 0x4E00 && code <= 0x9FFF) || // 中文
+        (code >= 0x3400 && code <= 0x4DBF) || // 中文扩展A
+        (code >= 0x0020 && code <= 0x007E) || // ASCII可打印字符
+        (code >= 0x3000 && code <= 0x303F) || // 中文标点
+        (code >= 0xFF00 && code <= 0xFFEF) || // 全角字符
+        code === 0x000A || code === 0x000D;   // 换行
+
+      if (isReadable) {
+        result += text[i];
+        consecutiveGarbage = 0;
+      } else {
+        consecutiveGarbage++;
+        // 连续乱码超过3个，插入空格分隔
+        if (consecutiveGarbage <= 1) {
+          result += ' ';
+        }
+      }
+    }
+
+    // 清理多余空格
+    return result.replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * 检查文本是否主要为可读内容
+   */
+  private isValidPdfText(text: string): boolean {
+    if (text.length < 10) return false;
+
+    let readableCount = 0;
+    for (let i = 0; i < Math.min(text.length, 500); i++) {
+      const code = text.charCodeAt(i);
+      if ((code >= 0x4E00 && code <= 0x9FFF) ||
+        (code >= 0x0041 && code <= 0x005A) ||
+        (code >= 0x0061 && code <= 0x007A) ||
+        (code >= 0x0030 && code <= 0x0039)) {
+        readableCount++;
+      }
+    }
+
+    return (readableCount / Math.min(text.length, 500)) > 0.3;
   }
 
   /**

@@ -1,7 +1,7 @@
 /**
  * 智能分类 Tab 页面
  * 提供文档智能分类、摘要生成、关键词提取功能
- * 支持本地分类（基于关键词匹配）- 异步处理避免UI卡顿
+ * 支持本地分类（基于关键词匹配）+ DeepSeek AI 摘要
  */
 
 import { fileIo } from '@kit.CoreFileKit';
@@ -12,8 +12,11 @@ import {
   getCategoryDisplayName
 } from '../common/types/AIDocTypes';
 import { SimilarityCalculator } from '../common/utils/SimilarityCalculator';
-import { ContentParser, DocumentFormat } from '../common/utils/ContentParser'; // 导入 ContentParser
+import { ContentParser, DocumentFormat } from '../common/utils/ContentParser';
+import { DeepSeekService, AICallResult } from '../common/utils/DeepSeekService';
 
+// API Key 存储文件名
+const API_KEY_FILE = '.deepseek_api_key';
 
 // 文件分析结果
 interface FileAnalysis {
@@ -72,6 +75,10 @@ export struct SmartClassifyTab {
   @State analyzedCount: number = 0;
   @State similarDocs: SimilarDoc[] = [];
   @State showSimilarPanel: boolean = false;
+  @State apiKey: string = '';
+  @State showApiKeyInput: boolean = false;
+  @State apiKeyInput: string = '';
+  @State useAISummary: boolean = true;
   private contentParser: ContentParser | null = null;
   private documentContents: Map<string, string> = new Map();
 
@@ -94,10 +101,51 @@ export struct SmartClassifyTab {
     // 初始化类别规则
     this.initCategoryRules();
 
+    // 加载保存的 API Key
+    this.loadApiKey();
+
     // 延迟加载文件列表
     setTimeout((): void => {
       this.loadFilesAsync();
     }, 200);
+  }
+
+  // 加载 API Key
+  private loadApiKey(): void {
+    try {
+      const keyPath = `${this.filesDir}/${API_KEY_FILE}`;
+      if (fileIo.accessSync(keyPath)) {
+        const file = fileIo.openSync(keyPath, fileIo.OpenMode.READ_ONLY);
+        const stat = fileIo.statSync(keyPath);
+        const buffer = new ArrayBuffer(stat.size);
+        fileIo.readSync(file.fd, buffer);
+        fileIo.closeSync(file);
+        const decoder = new util.TextDecoder('utf-8');
+        this.apiKey = decoder.decodeWithStream(new Uint8Array(buffer), { stream: false }).trim();
+        console.info('[SmartClassifyTab] API Key 已加载');
+      }
+    } catch (error) {
+      console.warn('[SmartClassifyTab] 加载 API Key 失败:', error);
+    }
+  }
+
+  // 保存 API Key
+  private saveApiKey(key: string): void {
+    try {
+      const keyPath = `${this.filesDir}/${API_KEY_FILE}`;
+      const file = fileIo.openSync(keyPath, fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE | fileIo.OpenMode.TRUNC);
+      const encoder = new util.TextEncoder();
+      const data = encoder.encodeInto(key);
+      fileIo.writeSync(file.fd, data.buffer);
+      fileIo.closeSync(file);
+      this.apiKey = key;
+      this.showApiKeyInput = false;
+      this.showToast('API Key 已保存', 'success');
+      console.info('[SmartClassifyTab] API Key 已保存');
+    } catch (error) {
+      console.error('[SmartClassifyTab] 保存 API Key 失败:', error);
+      this.showToast('保存失败', 'error');
+    }
   }
 
   // 初始化类别颜色
@@ -326,29 +374,102 @@ export struct SmartClassifyTab {
     }
   }
 
-  // 生成摘要
-  private generateSummary(content: string): string {
+  // 生成摘要（支持 AI 和本地两种模式）
+  private async generateSummaryAsync(content: string): Promise<string> {
     if (content.length === 0) {
       return '';
     }
 
-    const sentences: string[] = content.split(/[。！？\.\!\?]/);
+    // 如果启用 AI 摘要且有 API Key，使用 DeepSeek
+    if (this.useAISummary && this.apiKey && this.apiKey.length > 0) {
+      try {
+        const result: AICallResult = await DeepSeekService.summarizeDocument(content, this.apiKey);
+        if (result.success && result.content.length > 0) {
+          return result.content;
+        }
+      } catch (error) {
+        console.warn('[SmartClassifyTab] AI 摘要失败，使用本地摘要:', error);
+      }
+    }
+
+    // 本地摘要作为后备
+    return this.generateLocalSummary(content);
+  }
+
+  // 本地生成摘要
+  private generateLocalSummary(content: string): string {
+    if (content.length === 0) {
+      return '';
+    }
+
+    // 清理内容，移除多余空白
+    const cleanContent = content.replace(/\s+/g, ' ').trim();
+
+    // 按句子分割（支持中英文标点）
+    const sentences: string[] = cleanContent.split(/[。！？；\.\!\?\;]+/);
     const validSentences: string[] = sentences.filter((s: string): boolean => {
-      return s.trim().length > 10;
+      const trimmed = s.trim();
+      // 过滤太短或包含乱码的句子
+      return trimmed.length > 8 && this.isReadableText(trimmed);
     });
 
+    if (validSentences.length === 0) {
+      // 如果没有有效句子，直接截取前200字
+      const fallback = cleanContent.substring(0, 200);
+      return this.isReadableText(fallback) ? fallback + '...' : '';
+    }
+
+    // 取前3-4句话，目标200-300字
     const summaryParts: string[] = [];
-    const maxSentences = Math.min(2, validSentences.length);
-    for (let i = 0; i < maxSentences; i++) {
-      summaryParts.push(validSentences[i].trim());
+    let totalLength = 0;
+    const maxLength = 280;
+    const maxSentences = 4;
+
+    for (let i = 0; i < validSentences.length && summaryParts.length < maxSentences; i++) {
+      const sentence = validSentences[i].trim();
+      if (totalLength + sentence.length <= maxLength) {
+        summaryParts.push(sentence);
+        totalLength += sentence.length;
+      } else if (summaryParts.length === 0) {
+        // 第一句太长，截取部分
+        summaryParts.push(sentence.substring(0, maxLength));
+        break;
+      } else {
+        break;
+      }
     }
 
     let summary = summaryParts.join('。');
-    if (summary.length > 150) {
-      summary = summary.substring(0, 150) + '...';
+    // 确保以标点结尾
+    if (summary.length > 0 && !summary.match(/[。！？；\.\!\?\;]$/)) {
+      summary += '。';
     }
 
     return summary;
+  }
+
+  // 检查文本是否可读（非乱码）
+  private isReadableText(text: string): boolean {
+    if (text.length === 0) return false;
+
+    // 统计可读字符比例
+    let readableCount = 0;
+    for (let i = 0; i < text.length; i++) {
+      const code = text.charCodeAt(i);
+      // 中文字符、英文字母、数字、常见标点
+      if ((code >= 0x4E00 && code <= 0x9FFF) || // 中文
+        (code >= 0x0041 && code <= 0x005A) || // A-Z
+        (code >= 0x0061 && code <= 0x007A) || // a-z
+        (code >= 0x0030 && code <= 0x0039) || // 0-9
+        code === 0x0020 || // 空格
+        (code >= 0x3000 && code <= 0x303F) || // 中文标点
+        (code >= 0xFF00 && code <= 0xFFEF)) { // 全角字符
+        readableCount++;
+      }
+    }
+
+    // 可读字符占比超过60%认为是有效文本
+    return (readableCount / text.length) > 0.6;
   }
 
   // 修改：分析单个文件（需要改为 async）
@@ -359,7 +480,7 @@ export struct SmartClassifyTab {
     }
 
     try {
-      const content = await this.readFileContent(file.filename); // 改为 await
+      const content = await this.readFileContent(file.filename);
       if (!content || content.length < 10) {
         return null;
       }
@@ -369,7 +490,7 @@ export struct SmartClassifyTab {
 
       const classification = this.classifyLocal(content);
       const keywords = this.extractKeywords(content);
-      const summary = this.generateSummary(content);
+      const summary = await this.generateSummaryAsync(content);
 
       return {
         filename: file.filename,
@@ -582,6 +703,39 @@ export struct SmartClassifyTab {
       .width('100%')
       .padding({ left: 16, right: 16, top: 12, bottom: 8 })
       .alignItems(HorizontalAlign.Start)
+
+      // AI 设置行
+      Row({ space: 8 }) {
+        Toggle({ type: ToggleType.Switch, isOn: this.useAISummary })
+          .onChange((isOn: boolean): void => {
+            this.useAISummary = isOn;
+          })
+          .width(45)
+          .height(26)
+
+        Text('AI摘要')
+          .fontSize(13)
+          .fontColor('#333333')
+
+        Blank()
+
+        Text(this.apiKey ? 'API已设置' : '未设置API')
+          .fontSize(12)
+          .fontColor(this.apiKey ? '#34C759' : '#FF9500')
+
+        Button('设置')
+          .onClick((): void => {
+            this.apiKeyInput = this.apiKey;
+            this.showApiKeyInput = true;
+          })
+          .height(28)
+          .fontSize(12)
+          .backgroundColor('#E0E0E0')
+          .fontColor('#333333')
+          .borderRadius(6)
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, bottom: 8 })
 
       // 操作按钮
       Row({ space: 10 }) {
@@ -1114,6 +1268,74 @@ export struct SmartClassifyTab {
         .backgroundColor(Color.White)
         .borderRadius(16)
         .position({ x: '5%', y: '15%' })
+      }
+
+      // API Key 设置弹窗
+      if (this.showApiKeyInput) {
+        Stack()
+          .width('100%')
+          .height('100%')
+          .backgroundColor('rgba(0, 0, 0, 0.5)')
+          .onClick((): void => {
+            this.showApiKeyInput = false;
+          })
+          .position({ x: 0, y: 0 })
+
+        Column() {
+          Text('设置 DeepSeek API Key')
+            .fontSize(18)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#333333')
+            .margin({ bottom: 16 })
+
+          TextInput({ placeholder: '请输入 API Key (sk-...)', text: this.apiKeyInput })
+            .width('100%')
+            .height(44)
+            .backgroundColor('#F0F0F0')
+            .borderRadius(8)
+            .type(InputType.Normal)
+            .onChange((value: string): void => {
+              this.apiKeyInput = value;
+            })
+            .margin({ bottom: 12 })
+
+          Text('API Key 将保存在本地，下次启动自动加载')
+            .fontSize(12)
+            .fontColor('#8E8E93')
+            .margin({ bottom: 16 })
+
+          Row({ space: 12 }) {
+            Button('取消')
+              .layoutWeight(1)
+              .height(44)
+              .backgroundColor('#E0E0E0')
+              .fontColor('#333333')
+              .borderRadius(8)
+              .onClick((): void => {
+                this.showApiKeyInput = false;
+              })
+
+            Button('保存')
+              .layoutWeight(1)
+              .height(44)
+              .backgroundColor('#007AFF')
+              .fontColor(Color.White)
+              .borderRadius(8)
+              .onClick((): void => {
+                if (DeepSeekService.validateApiKey(this.apiKeyInput)) {
+                  this.saveApiKey(this.apiKeyInput);
+                } else {
+                  this.showToast('API Key 格式不正确，应以 sk- 开头', 'error');
+                }
+              })
+          }
+          .width('100%')
+        }
+        .width('85%')
+        .padding(20)
+        .backgroundColor(Color.White)
+        .borderRadius(16)
+        .position({ x: '7.5%', y: '30%' })
       }
     }
     .width('100%')

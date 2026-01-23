@@ -7,6 +7,7 @@ import { common } from '@kit.AbilityKit';
 import { DeepSeekService, AICallParams, AICallResult } from '../common/utils/DeepSeekService';
 import { ContentParser, ParseResult } from '../common/utils/ContentParser';
 import { fileIo } from '@kit.CoreFileKit';
+import { util } from '@kit.ArkTS';
 
 // 聊天消息接口
 interface ChatMessage {
@@ -16,8 +17,8 @@ interface ChatMessage {
   timestamp: number;
 }
 
-// API 密钥存储键
-const API_KEY_STORAGE_KEY = 'deepseek_api_key';
+// API 密钥存储文件名
+const API_KEY_FILE = '.deepseek_api_key';
 
 @Component
 export struct KnowledgeTab {
@@ -59,27 +60,38 @@ export struct KnowledgeTab {
   // 加载 API Key
   private loadApiKey(): void {
     try {
-      // const preferences = this.context?.getPreferences();
-      // 这里简化处理，实际应使用 preferences API
-      // this.apiKey = preferences?.getSync(API_KEY_STORAGE_KEY, '') as string;
-      this.apiKey=API_KEY_STORAGE_KEY
+      const keyPath = `${this.filesDir}/${API_KEY_FILE}`;
+      if (fileIo.accessSync(keyPath)) {
+        const file = fileIo.openSync(keyPath, fileIo.OpenMode.READ_ONLY);
+        const stat = fileIo.statSync(keyPath);
+        const buffer = new ArrayBuffer(stat.size);
+        fileIo.readSync(file.fd, buffer);
+        fileIo.closeSync(file);
+        const decoder = new util.TextDecoder('utf-8');
+        this.apiKey = decoder.decodeWithStream(new Uint8Array(buffer), { stream: false }).trim();
+        console.info('[KnowledgeTab] API Key 已加载');
+      }
     } catch (error) {
-      console.error('[KnowledgeTab] 加载 API Key 失败:', error);
+      console.warn('[KnowledgeTab] 加载 API Key 失败:', error);
     }
   }
 
   // 保存 API Key
   private saveApiKey(key: string): void {
-    this.apiKey = key;
-    this.showApiKeyInput = false;
-    this.showToast('API Key 已保存', 'success');
-
-    // 实际应用中应使用安全存储
     try {
-      // const preferences = this.context?.getPreferences();
-      // preferences?.putSync(API_KEY_STORAGE_KEY, key);
+      const keyPath = `${this.filesDir}/${API_KEY_FILE}`;
+      const file = fileIo.openSync(keyPath, fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE | fileIo.OpenMode.TRUNC);
+      const encoder = new util.TextEncoder();
+      const data = encoder.encodeInto(key);
+      fileIo.writeSync(file.fd, data.buffer);
+      fileIo.closeSync(file);
+      this.apiKey = key;
+      this.showApiKeyInput = false;
+      this.showToast('API Key 已保存', 'success');
+      console.info('[KnowledgeTab] API Key 已保存');
     } catch (error) {
       console.error('[KnowledgeTab] 保存 API Key 失败:', error);
+      this.showToast('保存失败', 'error');
     }
   }
 
