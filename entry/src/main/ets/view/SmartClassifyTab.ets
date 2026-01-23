@@ -340,39 +340,6 @@ export struct SmartClassifyTab {
     return summary;
   }
 
-  // // 分析单个文件
-  // private analyzeFile(index: number): FileAnalysis | null {
-  //   const file = this.fileList[index];
-  //   if (!file) {
-  //     return null;
-  //   }
-  //
-  //   try {
-  //     const content = this.readFileContent(file.filename);
-  //     if (!content || content.length < 10) {
-  //       return null;
-  //     }
-  //
-  //     const classification = this.classifyLocal(content);
-  //     const keywords = this.extractKeywords(content);
-  //     const summary = this.generateSummary(content);
-  //
-  //     return {
-  //       filename: file.filename,
-  //       category: classification.category,
-  //       categoryName: getCategoryDisplayName(classification.category),
-  //       confidence: classification.confidence,
-  //       keywords: keywords,
-  //       summary: summary,
-  //       wordCount: content.length,
-  //       isAnalyzed: true
-  //     };
-  //   } catch (error) {
-  //     console.error('[SmartClassifyTab] 分析文件失败:', file.filename, JSON.stringify(error));
-  //     return null;
-  //   }
-  // }
-
   // 修改：分析单个文件（需要改为 async）
   private async analyzeFile(index: number): Promise<FileAnalysis | null> {
     const file = this.fileList[index];

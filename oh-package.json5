@@ -8,7 +8,8 @@
   "main": "",
   "version": "1.0.0",
   "dependencies": {
-    "@ohos/mammoth": "^1.0.0"
+    "@ohos/mammoth": "^1.0.0",
+    "@ohos/img2pdf": "^2.0.3"
   },
   "dynamicDependencies": {}
 }

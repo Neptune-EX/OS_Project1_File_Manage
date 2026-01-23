@@ -100,7 +100,7 @@
 
 ### 实现原理
 
-使用`import { filePreview } from '@kit.PreviewKit'`内置的预览器完成对文件的预览。
+使用`import { filePreview } from '@kit.PreviewKit'`内置的预览器完成对文件的预览。但`Preview Kit（文件预览服务）：不支持.pdf/.pptx/.xlsx/.docx文件格式预览`。
 
 ### 预览器调用
 ```typescript
@@ -230,73 +230,146 @@ interface PreviewConfig {
 
 ## 3. 智能文档分类
 
+### 关联代码
+
+`entry/src/main/ets/common/utils/ContentParser.ets`,`entry/src/main/ets/view/SmartClassifyTab.ets`
+
 ### 实现原理
 
-- **手动处理**: 用户选择某个重复组中要保留的文件，系统删除该组中其他所有文件
-- **一键去重**: 遍历所有重复组，每组自动保留最早创建的文件（mtime最小），删除其他文件
+- **读取内容**: txt文档读取，docx文档读取，pdf文档读取。
+- **内容分析**: 后台分段，理解文义，给出分类标签
 
 ### 核心方法
 
 **文件路径**: `entry/src/main/ets/common/utils/DuplicateScanner.ets`
 
+
+### (1) TXT文件读取 -简单
 ```typescript
-// 一键去重 - 每组保留最早创建的文件
-deduplicateAll(): number {
-  const trashManager = TrashManager.getInstance(this.context);
-  const scanResult = this.fullScan();
-  let deletedCount = 0;
+  private async parseTxtFile(filename: string): Promise<ParseResult> {
+    try {
+      const filePath = `${this.filesDir}/${filename}`;
 
-  for (const group of scanResult.duplicateGroups) {
-    // files已按mtime排序，第一个是最早的
-    // 从索引1开始，删除其他所有文件
-    for (let i = 1; i < group.files.length; i++) {
-      const success = trashManager.moveToTrash(group.files[i].filename, 'dedup');
-      if (success) {
-        deletedCount++;
+      // 检查文件是否存在
+      try {
+        fileIo.accessSync(filePath);
+      } catch (e) {
+        return {
+          success: false,
+          content: '',
+          wordCount: 0,
+          error: '文件不存在',
+          format: DocumentFormat.TXT
+        };
       }
+
+      const file = fileIo.openSync(filePath, fileIo.OpenMode.READ_ONLY);
+      const stat = fileIo.statSync(filePath);
+
+      // 限制读取大小
+      const maxSize = 500 * 1024; // 500KB
+      const readSize = Math.min(stat.size, maxSize);
+      const buffer = new ArrayBuffer(readSize);
+      fileIo.readSync(file.fd, buffer);
+      fileIo.closeSync(file);
+
+      const content = this.arrayBufferToString(buffer);
+      const wordCount = this.countWords(content);
+
+      return {
+        success: true,
+        content: content,
+        wordCount: wordCount,
+        format: DocumentFormat.TXT
+      };
+    } catch (error) {
+      console.error('[ContentParser] 解析 TXT 文件失败:', error);
+      return {
+        success: false,
+        content: '',
+        wordCount: 0,
+        error: `解析失败: ${error}`,
+        format: DocumentFormat.TXT
+      };
     }
   }
-
-  this.fullScan();  // 重新扫描更新状态
-  return deletedCount;
-}
-
-// 手动处理单个重复组 - 保留指定文件
-deduplicateGroup(hash: string, keepFilename: string): number {
-  const trashManager = TrashManager.getInstance(this.context);
-  const scanResult = this.fullScan();
-  const group = scanResult.duplicateGroups.find(g => g.hash === hash);
-
-  if (!group) return 0;
-
-  let deletedCount = 0;
-  for (const file of group.files) {
-    // 除了要保留的文件，其他都删除
-    if (file.filename !== keepFilename) {
-      const success = trashManager.moveToTrash(file.filename, 'dedup');
-      if (success) {
-        deletedCount++;
-      }
-    }
-  }
-
-  this.fullScan();
-  return deletedCount;
-}
 ```
 
-### UI交互流程
+### (2) Docx文件读取 -中等
 
-**文件路径**: `entry/src/main/ets/view/DeduplicationTab.ets`
+使用第三方库`ohpm install @ohos/mammoth`解决该问题，第三方库网址`https://ohpm.openharmony.cn/#/cn/result?sortedType=relevancy&page=1&q=docx`
 
-1. 用户点击重复组展开查看文件列表
-2. 每个文件行显示"查看"按钮（查看内容）和"保留此文件"按钮
-3. 点击"保留此文件"弹出确认对话框
-4. 确认后调用 `deduplicateGroup(hash, keepFilename)` 执行删除
-5. 底部"保留第一个，删除其他"按钮快速处理整组
-6. 顶部"一键去重"按钮处理所有重复组
+
+```typescript
+  private async parseDocxFile(filename: string): Promise<ParseResult> {
+    try {
+      const filePath = `${this.filesDir}/${filename}`;
+      console.log("[ContentParser]正在读取docx文件")
+      // 检查文件是否存在
+      try {
+        fileIo.accessSync(filePath);
+      } catch (e) {
+        return {
+          success: false,
+          content: '',
+          wordCount: 0,
+          error: '文件不存在',
+          format: DocumentFormat.DOCX
+        };
+      }
+
+      const res = await mammoth.extractRawText({
+        path: filePath
+      });
+      console.log(`[ContentParser] mammoth解析完成，message: ${res.messages}`);
+
+      // 提取文本内容
+      let content = res.value;
+      let wordCount=content.length
+
+
+      if (content.length === 0) {
+        return {
+          success: false,
+          content: '',
+          wordCount: 0,
+          error: 'DOCX 文件解析失败，内容为空',
+          format: DocumentFormat.DOCX
+        };
+      }
+
+      return {
+        success: true,
+        content: content,
+        wordCount: wordCount,
+        format: DocumentFormat.DOCX
+      };
+    } catch (error) {
+      console.error('[ContentParser] 解析 DOCX 文件失败:', error);
+      return {
+        success: false,
+        content: '',
+        wordCount: 0,
+        error: `解析失败: ${error}`,
+        format: DocumentFormat.DOCX
+      };
+    }
+  }
+```
+
+
+### (3) PDF文件读取
+
+鸿蒙开发文档中有讲：PDF Kit（PDF服务）：X86版本不支持。因此不采用该方法进行PDF的读取。而且现行的东西不支持读取大容量的PDF文件，会卡死！
+
+```typescript
+
+this si 
+```
+
 
 ---
+
 
 ## 4. 误操作回滚（回收站功能）
 

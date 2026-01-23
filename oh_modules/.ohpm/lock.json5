@@ -14,6 +14,10 @@
         "@ohos/mammoth": {
           "specifier": "^1.0.0",
           "version": "1.0.0"
+        },
+        "@ohos/img2pdf": {
+          "specifier": "^2.0.3",
+          "version": "2.0.3"
         }
       },
       "devDependencies": {},
@@ -40,6 +44,15 @@
         "underscore": "1.13.7",
         "xmlbuilder": "11.0.0"
       },
+      "dynamicDependencies": {},
+      "dev": false,
+      "dynamic": false,
+      "maskedByOverrideDependencyMap": false
+    },
+    "@ohos/img2pdf@2.0.3": {
+      "integrity": "sha512-51D3fcvg+sN8M/y3I30h1TrG7G1yvltWefWkadMvGHWmr/yVd+kXI46wqU0KzxTSJLccnF6zItoe9aABdIa0KA==",
+      "storePath": "oh_modules/.ohpm/@ohos+img2pdf@2.0.3",
+      "dependencies": {},
       "dynamicDependencies": {},
       "dev": false,
       "dynamic": false,

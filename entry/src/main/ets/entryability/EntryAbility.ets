@@ -18,9 +18,12 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 
+import { GlobalContext } from '../common/utils/GlobalContext'; // 或根据实际路径调整
+
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
+    GlobalContext.getContext().setObject("context", this.context);
   }
 
   onDestroy(): void {
