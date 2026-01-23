@@ -15,9 +15,6 @@
 
 import { ApplicationFileTab } from '../view/ApplicationFileTab';
 import { publicFilesTab } from '../view/PublicFilesTab';
-import { DeduplicationTab } from '../view/DeduplicationTab';
-import { TrashTab } from '../view/TrashTab';
-import { TestDataTab } from '../view/TestDataTab';
 import { SmartClassifyTab } from '../view/SmartClassifyTab';
 import { KnowledgeTab } from '../view/KnowledgeTab';
 

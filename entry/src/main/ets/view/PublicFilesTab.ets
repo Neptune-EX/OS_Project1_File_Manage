@@ -13,157 +13,12 @@
  * limitations under the License.
  */
 
-
-// import { photoAccessHelper } from '@kit.MediaLibraryKit';
-// import { fileIo } from '@kit.CoreFileKit';
-// import Logger from '../common/utils/Logger';
-// import { readUserFile, saveToUser } from '../common/utils/SavingAndSelectUserFile';
-// import { photoPickerGetUri } from '../common/utils/PictureSaving';
-//
-// @Component
-// export struct publicFilesTab {
-//   @State picture: string = '';
-//   @State flag: Boolean = false;
-//   @State message: string = '';
-//   @State content: string = '';
-//   @State isInput: Boolean = false;
-//   // Setting the button properties of a security control
-//   @State saveButtonOptions: SaveButtonOptions = {
-//     icon: SaveIconStyle.FULL_FILLED,
-//     text: SaveDescription.SAVE_IMAGE,
-//     buttonType: ButtonType.Capsule
-//   }
-//
-//   build() {
-//     Column() {
-//       Column() {
-//         Image($r('app.media.img'))
-//           .borderRadius($r('app.float.default_24'))
-//           .width($r('app.float.default_312'))
-//           .height($r('app.float.default_147'))
-//         // Create Security Control Button
-//         SaveButton(this.saveButtonOptions)
-//           .onClick(async (event, result: SaveButtonOnClickResult) => {
-//             if (result == SaveButtonOnClickResult.SUCCESS) {
-//               try {
-//                 Logger.info('createAsset successfully, event: ' + event);
-//                 let context = this.getUIContext().getHostContext();
-//                 let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(context);
-//                 // Creating a Media File
-//                 let uri = await phAccessHelper.createAsset(photoAccessHelper.PhotoType.IMAGE, 'jpg')
-//                   .catch((error: BusinessError<Error>) => {
-//                     Logger.error(`createAsset catch error, code: ${error.code}, message: ${error.message}`);
-//                     return '';
-//                   })
-//                 Logger.info('createAsset successfully, uri: ' + uri);
-//                 // Open the created media file and read the local file and convert it to ArrayBuffer for easy filling.
-//                 let file = await fileIo.open(uri, fileIo.OpenMode.READ_WRITE);
-//                 let buffer = context!.resourceManager.getMediaContentSync($r('app.media.img').id);
-//                 // Write the read ArrayBuffer to the new media file.
-//                 let writeLen = await fileIo.write(file.fd, buffer.buffer);
-//                 Logger.info('write success,len=' + writeLen);
-//                 await fileIo.close(file);
-//               } catch (err) {
-//                 Logger.error('createAsset failed, message = ', err);
-//               }
-//             } else {
-//               Logger.error('SaveButtonOnClickResult createAsset failed');
-//             }
-//           })
-//       }
-//       .margin({ bottom: $r('app.float.default_10') })
-//       .width($r('app.float.default_336'))
-//       .height($r('app.float.default_223'))
-//       .borderRadius($r('app.float.default_24'))
-//       .justifyContent(FlexAlign.SpaceAround)
-//       .backgroundColor($r('app.color.start_window_background'))
-//
-//       Column() {
-//         Text($r('app.string.select_photo'))
-//           .width($r('app.float.default_302'))
-//           .height($r('app.float.default_48'))
-//           .lineHeight($r('app.float.default_22'))
-//           .fontFamily('HarmonyHeiTi-Medium')
-//           .fontSize($r('app.float.default_16'))
-//           .fontWeight(500)
-//           .textAlign(TextAlign.Start)
-//           .fontColor($r('app.color.text_color'))
-//         Column() {
-//           if (!this.flag) {
-//             Image($r('app.media.ic_folder_add2'))
-//               .width($r('app.float.default_24'))
-//               .height($r('app.float.default_24'))
-//               .objectFit(ImageFit.Contain)
-//           } else {
-//             Image(this.picture)
-//               .width('100%')
-//               .height('100%')
-//               .borderRadius($r('app.float.default_24'))
-//           }
-//         }
-//         .width($r('app.float.default_312'))
-//         .height($r('app.float.default_147'))
-//         .borderRadius($r('app.float.default_16'))
-//         .backgroundColor($r('app.color.picture_background'))
-//         .onClick(async () => {
-//           await photoPickerGetUri().then(value => {
-//             this.flag = true;
-//             this.picture = value;
-//           });
-//         })
-//         .justifyContent(FlexAlign.Center)
-//         .alignItems(HorizontalAlign.Center)
-//       }
-//       .margin({ bottom: $r('app.float.default_10') })
-//       .backgroundColor($r('app.color.start_window_background'))
-//       .width($r('app.float.default_336'))
-//       .height($r('app.float.default_213'))
-//       .borderRadius($r('app.float.default_24'))
-//
-//       Column() {
-//         TextArea({ placeholder: $r('app.string.textarea_default2'), text: this.isInput ? this.content : this.message })
-//           .onChange((value: string) => {
-//             this.content = value;
-//           })
-//           .width($r('app.float.default_312'))
-//           .height($r('app.float.default_120'))
-//           .margin({ top: $r('app.float.default_10'), bottom: $r('app.float.default_10') })
-//           .enableKeyboardOnFocus(false)
-//         Button($r('app.string.button3'))
-//           .width($r('app.float.default_312'))
-//           .height($r('app.float.default_40'))
-//           .onClick(() => {
-//             saveToUser(this.content)
-//             this.content = '';
-//             this.isInput = true;
-//           })
-//           .margin({ bottom: $r('app.float.default_10') })
-//         Button($r('app.string.button4'))
-//           .width($r('app.float.default_312'))
-//           .height($r('app.float.default_40'))
-//           .onClick(async () => {
-//             await readUserFile().then((value: string) => {
-//               this.message = value;
-//               this.isInput = false;
-//             })
-//           })
-//       }
-//       .backgroundColor($r('app.color.start_window_background'))
-//       .width($r('app.float.default_336'))
-//       .height('251')
-//       .borderRadius($r('app.float.default_24'))
-//       .margin({ bottom: $r('app.float.default_100') })
-//     }
-//     .width('100%')
-//   }
-// }
-
 import { FileManager } from '../common/utils/FileManager';
 import { fileIo } from '@kit.CoreFileKit';
-import { photoPickerGetUri } from '../common/utils/PictureSaving';
 import { FileInfo } from '../common/utils/FileManager';
 import { readFile } from '../common/utils/ReadFile';
-import { deleteFile, initDeleteUtils } from '../common/utils/DeleteFile';
+import {common} from "@kit.AbilityKit"
+import {BusinessError} from '@kit.BasicServicesKit'
 import fs from '@ohos.file.fs';
 
 @Component
@@ -197,7 +52,7 @@ export struct publicFilesTab {
   aboutToAppear() {
     let context = this.getUIContext().getHostContext() as Context;
     this.fileManager = new FileManager(context);
-    initDeleteUtils(context);
+    // initDeleteUtils(context);
     // this.searchFilesWithInfo();
     this.loadFileListWithInfo();
   }
@@ -246,10 +101,42 @@ export struct publicFilesTab {
     }
   }
 
+  private deleteFile(fileName: string): boolean {
+    try {
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      const sandboxDir: string = context.filesDir;
+      const filePath: string = sandboxDir + '/' + fileName;
+
+      // 检查文件是否存在
+      try {
+        const stats = fs.statSync(filePath);
+        if (!stats.isFile()) {
+          return false;
+        }
+      } catch (error) {
+        return false;
+      }
+
+      // 直接删除文件
+      fs.unlinkSync(filePath);
+
+      console.log(`已永久删除: ${fileName}`) ;
+      console.info('FileTab', `文件 ${fileName} 已删除`);
+      return true;
+
+    } catch (error) {
+      const err = error as BusinessError;
+      console.error('FileTab', `删除文件失败:`, err);
+      console.log(`删除失败: ${err.message}`);
+      return false;
+    }
+  }
+
+
   // 执行删除文件的方法
   private async executeDeleteFile(filename: string) {
     console.log(`执行删除文件: ${filename}`);
-    const success = deleteFile(filename);
+    const success = this.deleteFile(filename);
     if (success) {
       console.log(`文件 ${filename} 删除成功`);
       await this.loadFileListWithInfo();
