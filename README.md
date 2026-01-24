@@ -1,4 +1,4 @@
-# 智能文件维护系统 - 功能实现文档 (BluePrint by:CBK @Neptune_EX LJQ @Livia-Tassel)
+# 智能文件维护系统 - 功能实现文档 (BluePrint by:CBK @Neptune_EX ; LJQ @Livia-Tassel)
 
 ## 前置模板文件：实现文件管理功能(https://gitcode.com/HarmonyOS_Codelabs/FilesManger)
 
