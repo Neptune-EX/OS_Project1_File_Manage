@@ -1,0 +1,38 @@
+[
+    {
+        "Name": "pdf.js",
+        "License": "Apache-2.0 license",
+        "License File": "/pdfJs/LICENSE",
+        "Version Number": "2.13.216",
+        "Owner" : "xiafeng@huawei.com",
+        "Upstream URL": "https://github.com/mozilla/pdf.js",
+        "Description": "PDF Reader in JavaScript"
+    },
+    {
+        "Name": "jsPDF",
+        "License": "MIT License",
+        "License File": "/library/LICENSE",
+        "Version Number": "v2.5.1",
+        "Owner" : "xiafeng@huawei.com",
+        "Upstream URL": "https://github.com/parallax/jsPDF",
+        "Description": "Client-side JavaScript PDF generation for everyone."
+    },
+    {
+        "Name": "btoa",
+        "License": "Apache-2.0 license",
+        "License File": "/library/LICENSE-Apache-2.0-license-btoa",
+        "Version Number": "1.2.1",
+        "Owner" : "xiafeng@huawei.com",
+        "Upstream URL": "https://git.coolaj86.com/coolaj86/btoa.js",
+        "Description": "btoa for Node.JS (it's a one-liner)"
+    },
+    {
+        "Name": "fflate",
+        "License": "MIT License",
+        "License File": "/library/LICENSE-MIT-License-fflate",
+        "Version Number": "0.8.0",
+        "Owner" : "xiafeng@huawei.com",
+        "Upstream URL": "https://github.com/101arrowz/fflate",
+        "Description": "High performance (de)compression in an 8kB package"
+    }
+]

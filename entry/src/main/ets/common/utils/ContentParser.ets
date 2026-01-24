@@ -9,7 +9,12 @@ import { zlib } from '@kit.BasicServicesKit';
 import * as mammoth from "@ohos/mammoth";
 import { pdfService } from '@kit.PDFKit';  // ARM 真机可用
 
-// 解析结果接口
+// import * as mammoth from "@ohos/mammoth"; i did use         ohpm install @ohos/mammoth to install the function,
+// and is can be seen in oh_modules, but there are still
+// error Cannot find module '@ohos/mammoth' or its
+// corresponding type declarations. <ArkTSCheck>, why???
+
+  // 解析结果接口
 export interface ParseResult {
   success: boolean;
   content: string;
@@ -17,7 +22,15 @@ export interface ParseResult {
   error?: string;
   format: DocumentFormat;
 }
+interface MammothMessage {
+  type: string;
+  message: string;
+}
 
+interface MammothResult {
+  value: string;
+  messages: MammothMessage[];
+}
 // 文档格式枚举
 export enum DocumentFormat {
   TXT = 'txt',
@@ -167,14 +180,19 @@ export class ContentParser {
         };
       }
 
-      const res = await mammoth.extractRawText({
-        path: filePath
-      });
-      console.log(`[ContentParser] mammoth解析完成，message: ${res.messages}`);
+      // const res = await mammoth.extractRawText({path: filePath});
+      // console.log(`[ContentParser] mammoth解析完成，message: ${res.messages}`);
+      // // 提取文本内容
+      // let content = res.value;
+      // let wordCount=content.length
 
-      // 提取文本内容
-      let content = res.value;
-      let wordCount=content.length
+      const res: MammothResult = await mammoth.extractRawText({ path: filePath }) as MammothResult;
+
+      console.log(`[ContentParser] mammoth解析完成，messages count: ${res.messages.length}`);
+
+      // Now res.value is recognized as a string
+      let content: string = res.value;
+      let wordCount: number = content.length;
 
 
       if (content.length === 0) {
