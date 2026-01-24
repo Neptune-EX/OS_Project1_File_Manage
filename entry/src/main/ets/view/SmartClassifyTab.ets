@@ -7,6 +7,7 @@
 import { fileIo } from '@kit.CoreFileKit';
 import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
+import { router } from '@kit.ArkUI';
 import {
   DocumentCategory,
   getCategoryDisplayName
@@ -16,6 +17,7 @@ import { ContentParser, DocumentFormat } from '../common/utils/ContentParser';
 import { DeepSeekService, AICallResult } from '../common/utils/DeepSeekService';
 import { DiffUtils, DiffLine, DiffType, DiffResult } from '../common/utils/DiffUtils';
 import { TrashManager } from '../common/utils/TrashManager';
+import { KnowledgeIndex } from '../common/utils/KnowledgeIndex';
 
 // API Key 存储文件名
 const API_KEY_FILE = '.deepseek_api_key';
@@ -60,6 +62,15 @@ interface ClassificationResult {
   confidence: number;
 }
 
+// 图谱数据传递
+interface GraphFileData {
+  filename: string;
+  category: DocumentCategory;
+  categoryName: string;
+  keywords: string[];
+  summary: string;
+}
+
 @Component
 export struct SmartClassifyTab {
   @State fileList: FileAnalysis[] = [];
@@ -87,6 +98,7 @@ export struct SmartClassifyTab {
   @State diffFile2: string = '';
   @State diffResult: DiffResult | null = null;
   @State isDeleting: boolean = false;
+  private knowledgeIndex: KnowledgeIndex | null = null;
   private contentParser: ContentParser | null = null;
   private documentContents: Map<string, string> = new Map();
   private trashManager: TrashManager | null = null;
@@ -105,6 +117,8 @@ export struct SmartClassifyTab {
     this.contentParser = ContentParser.getInstance(context);
     // 初始化 TrashManager
     this.trashManager = TrashManager.getInstance(context);
+    // 初始化 KnowledgeIndex
+    this.knowledgeIndex = KnowledgeIndex.getInstance(context);
 
     // 初始化类别颜色
     this.initCategoryColors();
@@ -643,6 +657,51 @@ export struct SmartClassifyTab {
     this.isDeleting = false;
   }
 
+  // 构建知识图谱
+  private buildKnowledgeGraph(): void {
+    if (!this.knowledgeIndex) return;
+
+    // 索引已分析的文档
+    this.fileList.forEach((file: FileAnalysis) => {
+      if (file.isAnalyzed) {
+        const content = this.documentContents.get(file.filename);
+        if (content) {
+          this.knowledgeIndex!.indexDocument(file.filename, content);
+        }
+      }
+    });
+
+    // 检查节点数量
+    const nodes = this.knowledgeIndex.getKnowledgeNodes();
+    if (nodes.length < 2) {
+      this.showToast('文档数量不足，至少需要2个已分析文档', 'warning');
+      return;
+    }
+
+    // 准备传递给图谱页面的数据
+    const analysisData: GraphFileData[] = [];
+    this.fileList.forEach((f: FileAnalysis) => {
+      if (f.isAnalyzed) {
+        const item: GraphFileData = {
+          filename: f.filename,
+          category: f.category,
+          categoryName: f.categoryName,
+          keywords: f.keywords,
+          summary: f.summary
+        };
+        analysisData.push(item);
+      }
+    });
+
+    // 跳转到图谱页面
+    router.pushUrl({
+      url: 'pages/KnowledgeGraphPage',
+      params: {
+        fileAnalysisList: JSON.stringify(analysisData)
+      }
+    });
+  }
+
 
   // 批量分析文件
   private async analyzeAllFiles(): Promise<void> {
@@ -874,6 +933,20 @@ export struct SmartClassifyTab {
             .fontColor(Color.White)
             .borderRadius(8)
             .width(80)
+        }
+
+        // 知识图谱按钮
+        if (this.getAnalyzedCount() >= 2) {
+          Button('图谱')
+            .onClick((): void => {
+              this.buildKnowledgeGraph();
+            })
+            .height(40)
+            .fontSize(14)
+            .backgroundColor('#5856D6')
+            .fontColor(Color.White)
+            .borderRadius(8)
+            .width(60)
         }
       }
       .width('100%')
