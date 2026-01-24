@@ -48,10 +48,6 @@ export class ContentParser {
     return ContentParser.instance;
   }
 
-  // 初始化 PDF 文档
-  private initPdfDocument(): void {
-
-  }
 
   /**
    * 解析文档内容

@@ -209,17 +209,17 @@ export struct KnowledgeTab {
       // 调用 AI 分析
       const prompt = `请分析以下文档内容，提供摘要、关键要点和分类建议：
 
-文档名称：${filename}
-字数：${parseResult.wordCount}
+      文档名称：${filename}
+      字数：${parseResult.wordCount}
 
-文档内容：
-${parseResult.content.substring(0, 4000)}
+      文档内容：
+      ${parseResult.content.substring(0, 4000)}
 
-请提供：
-1. 文档摘要（100-200字）
-2. 3-5个关键要点
-3. 文档类型分类建议
-4. 其他有价值的分析`;
+      请提供：
+      1. 文档摘要（100-200字）
+      2. 3-5个关键要点
+      3. 文档类型分类建议
+      4. 其他有价值的分析`;
 
       const params: AICallParams = {
         prompt: prompt,
