@@ -1,326 +1,295 @@
 /*
  * Copyright (c) 2025 Huawei Device Co., Ltd.
- * Licensed under the Apache License,Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Licensed under the Apache License, Version 2.0 (the "License");
  */
 
-import { readFile } from '../common/utils/ReadFile';
 import { writeFile } from '../common/utils/WriteFile';
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { fileIo as fs, fileShare } from '@kit.CoreFileKit';
-
+import { fileIo as fs, picker } from '@kit.CoreFileKit';
 
 @Component
 export struct ApplicationFileTab {
-  // Used to record the read content.
-  @State message: string = '';
-  // Used to record the contents of a text box.
   @State content: string = '';
-
-  // 新增：记录文件名
   @State fileName: string = '';
+  @State statusText: string = '';
+  @State statusType: string = 'info'; // info, success, error
+  @State isProcessing: boolean = false;
 
-  // 新增：拷贝状态信息
-  @State copyStatus: string = '';
-
-  // 新增：文件列表状态
-  @State fileList: string[] = [];
-
-
-  // 新增：获取rawfile目录下的所有文件
-  private getRawFilelist(): Promise<string[]> {
-    return new Promise((resolve, reject) => {
-      try {
-        const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
-
-        // 直接返回Promise
-        context.resourceManager.getRawFileList("")
-          .then((fileList: string[]) => {
-            console.info("FileTab", "Rawfile文件列表:", fileList);
-            resolve(fileList);
-          })
-          .catch((error: Error) => {
-            console.error("FileTab", "获取rawfile文件列表失败:", error);
-            resolve([]); // 出错时返回空数组
-          });
-      } catch (error) {
-        console.error("FileTab", "获取context失败:", error);
-        resolve([]);
-      }
-    });
-  }
-
-  // 新增：拷贝rawfile所有文件到沙箱
   private async copyAllRawFilesToSandbox(): Promise<void> {
-    try {
-      // 获取UIAbilityContext
-      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    if (this.isProcessing) return;
+    this.isProcessing = true;
+    this.statusText = '正在导入...';
+    this.statusType = 'info';
 
-      // 获取rawfile文件列表
-      const rawFileList: string[] = await this.getRawFilelist();
+    try {
+      const context = getContext(this) as common.UIAbilityContext;
+      const rawFileList = await context.resourceManager.getRawFileList("");
 
       if (rawFileList.length === 0) {
-        this.copyStatus = "rawfile目录中没有文件";
+        this.statusText = '资源目录为空';
+        this.statusType = 'error';
+        this.isProcessing = false;
         return;
       }
 
-      this.copyStatus = `开始拷贝 ${rawFileList.length} 个文件...`;
-      let successCount: number = 0;
-      let failCount: number = 0;
-      let details: string = "";
-
-      // 获取沙箱目录
-      const sandboxDir: string = context.filesDir;
-
-      // 遍历所有文件进行拷贝
+      let success = 0;
       for (const fileName of rawFileList) {
         try {
-          // 从rawfile读取文件内容
-          const fileContent: Uint8Array = context.resourceManager.getRawFileContentSync(fileName);
-
-          // 目标文件路径
-          const targetPath: string = sandboxDir + '/' + fileName;
-
-          // 创建并写入文件
-          const file = fs.openSync(targetPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
-          const writeLen: number = fs.writeSync(file.fd, fileContent.buffer as ArrayBuffer);
+          const content = context.resourceManager.getRawFileContentSync(fileName);
+          const targetPath = `${context.filesDir}/${fileName}`;
+          const file = fs.openSync(targetPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+          fs.writeSync(file.fd, content.buffer as ArrayBuffer);
           fs.closeSync(file);
-
-          successCount++;
-          details += `✓ ${fileName}: ${writeLen} 字节\n`;
-          console.info("FileTab", `文件 ${fileName} 拷贝成功, 大小: ${writeLen} 字节`);
-
-        } catch (fileError) {
-          failCount++;
-          details += `✗ ${fileName}: 失败\n`;
-          console.error("FileTab", `文件 ${fileName} 拷贝失败:`, fileError);
+          success++;
+        } catch (e) {
+          console.error("FileTab", `拷贝 ${fileName} 失败`);
         }
       }
 
-      this.copyStatus = `拷贝完成！\n成功: ${successCount}, 失败: ${failCount}\n${details}`;
-
-      // 更新文件列表显示
-      await this.updateFileList();
-
+      this.statusText = `导入完成：${success}/${rawFileList.length} 个文件`;
+      this.statusType = 'success';
     } catch (error) {
-      const code: number = (error as BusinessError).code;
-      const message: string = (error as BusinessError).message;
-      this.copyStatus = `整体拷贝失败！错误码: ${code}, 信息: ${message}`;
-      console.error("FileTab", `整体拷贝失败, error code: ${code}, message: ${message}.`);
+      this.statusText = `导入失败：${(error as BusinessError).message}`;
+      this.statusType = 'error';
+    } finally {
+      this.isProcessing = false;
     }
   }
 
-  // 新增：更新沙箱文件列表（简化版）
-  private async updateFileList(): Promise<void> {
+  private async importWithPicker(): Promise<void> {
+    if (this.isProcessing) return;
+
     try {
-      // 获取上下文
       const context = getContext(this) as common.UIAbilityContext;
-      const sandboxDir: string = context.filesDir;
+      const documentPicker = new picker.DocumentViewPicker(context);
+      const options = new picker.DocumentSelectOptions();
+      options.maxSelectNumber = 20;
 
-      // 直接使用 listFileSync，这是最常用的方法
-      const allEntries: string[] = fs.listFileSync(sandboxDir);
+      const uris = await documentPicker.select(options);
+      if (uris.length === 0) {
+        this.statusText = '未选择文件';
+        this.statusType = 'info';
+        return;
+      }
 
-      // 过滤出文件（如果是目录则跳过）
-      const fileList: string[] = [];
+      this.isProcessing = true;
+      this.statusText = '正在导入...';
+      this.statusType = 'info';
 
-      for (const entry of allEntries) {
-        const fullPath = sandboxDir + '/' + entry;
+      let success = 0;
+      for (const uri of uris) {
         try {
-          const stats = fs.statSync(fullPath);
-          if (stats.isFile()) {
-            fileList.push(entry);
-          }
-        } catch (error) {
-          // 如果无法获取文件信息，跳过
-          continue;
+          const parts = uri.split('/');
+          const fileName = parts[parts.length - 1];
+          const srcFile = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+          const stat = fs.statSync(srcFile.fd);
+          const buffer = new ArrayBuffer(stat.size);
+          fs.readSync(srcFile.fd, buffer);
+          fs.closeSync(srcFile);
+
+          const dstPath = `${context.filesDir}/${fileName}`;
+          const dstFile = fs.openSync(dstPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+          fs.writeSync(dstFile.fd, buffer);
+          fs.closeSync(dstFile);
+          success++;
+        } catch (e) {
+          console.error("FileTab", "导入文件失败:", e);
         }
       }
-      this.fileList = fileList.sort();
-      console.info("FileTab", "沙箱文件列表更新完成:", this.fileList);
 
+      this.statusText = `导入完成：${success}/${uris.length} 个文件`;
+      this.statusType = 'success';
     } catch (error) {
-      console.error("FileTab", "更新文件列表失败:", error);
-      this.fileList = [];
+      this.statusText = `选择失败`;
+      this.statusType = 'error';
+    } finally {
+      this.isProcessing = false;
     }
   }
 
+  private createFile(): void {
+    const name = this.fileName.trim();
+    const text = this.content.trim();
 
-  //信息预览：
+    if (name.length === 0) {
+      this.statusText = '请输入文件名';
+      this.statusType = 'error';
+      return;
+    }
 
-  // 1 读取
-  // const file = fs.openSync(getContext(this).cacheDir+'/jz.txt', fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE)
-  // 2 修改响应式数据
-  // const result = fs.readText(getContext(this).cacheDir+'/jz.txt')
-  // console.log('查看结果1：', await result)
+    if (text.length === 0) {
+      this.statusText = '请输入文件内容';
+      this.statusType = 'error';
+      return;
+    }
 
-  // 作者：IT充电站
-  // 链接：https://juejin.cn/post/7576936862632706048
-  // 来源：稀土掘金
-  // 著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。
+    // 自动添加 .txt 扩展名
+    const finalName = name.includes('.') ? name : `${name}.txt`;
 
+    try {
+      writeFile(text, finalName);
+      this.statusText = `文件 "${finalName}" 创建成功`;
+      this.statusType = 'success';
+      this.content = '';
+      this.fileName = '';
+    } catch (e) {
+      this.statusText = '创建失败';
+      this.statusType = 'error';
+    }
+  }
 
   build() {
     Column() {
-      // === 文件拷贝功能区域 ===
-      Text('rawfile文件批量拷贝')
-        .width('90%')
-        .height($r('app.float.default_22'))
-        .fontColor('black')
-        .fontWeight(500)
-        .fontSize($r('app.float.default_16'))
-        .fontFamily('HarmonyHeiTi-Medium')
-        .lineHeight($r('app.float.default_22'))
-        .textAlign(TextAlign.Start)
-        .margin({
-          top: $r('app.float.default_20'),
-          bottom: $r('app.float.default_10')
-        })
+      // 标题
+      Text('文件导入')
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#333333')
+        .width('100%')
+        .padding({ left: 20, top: 16, bottom: 12 })
 
-      // 拷贝状态显示
-      Scroll() {
-        Text(this.copyStatus)
-          .width('90%')
-          .fontSize($r('app.float.default_12'))
-          .fontColor('black')
-          .textAlign(TextAlign.Start)
-          .margin({ bottom: $r('app.float.default_10') })
-      }
-      .height(80)
-      .width('90%')
-      .margin({ bottom: $r('app.float.default_10') })
-
-      // 文件操作按钮区域
-      Row() {
-        Button('拷贝所有文件')
-          .width('45%')
-          .height($r('app.float.default_40'))
-          .fontColor('white')
-          .backgroundColor('#4CAF50')
-          .fontSize($r('app.float.default_14'))
-          .onClick((): void => {
-            this.copyAllRawFilesToSandbox();
-          })
-
-      }
-      .width('90%')
-      .justifyContent(FlexAlign.Center)
-      .margin({ bottom: $r('app.float.default_10') })
-
-
-      // 文件内容显示区域
-      if (this.message) {
-        Text('文件内容:')
-          .width('90%')
-          .height($r('app.float.default_22'))
-          .fontColor('black')
-          .fontWeight(500)
-          .fontSize($r('app.float.default_14'))
-          .textAlign(TextAlign.Start)
-          .margin({ bottom: $r('app.float.default_10') })
-
-        Scroll() {
-          Text(this.message)
-            .width('100%')
-            .fontSize($r('app.float.default_12'))
-            .fontColor('black')
-            .textAlign(TextAlign.Start)
-        }
-        .height(100)
-        .width('90%')
-        .margin({ bottom: $r('app.float.default_20') })
-      }
-
-      Divider()
-        .strokeWidth(1)
-        .color($r('app.color.divider_color'))
-        .margin({
-          top: $r('app.float.default_10'),
-          bottom: $r('app.float.default_20')
-        })
-
-      // === 文件名输入区域 ===
-      Text('文件名称：')
-        .width($r('app.float.default_294'))
-        .height($r('app.float.default_22'))
-        .fontColor($r('app.color.text_color'))
-        .fontWeight(500)
-        .fontSize($r('app.float.default_16'))
-        .fontFamily('HarmonyHeiTi-Medium')
-        .lineHeight($r('app.float.default_22'))
-        .textAlign(TextAlign.Start)
-        .margin({
-          top: $r('app.float.default_13'),
-          bottom: $r('app.float.default_13'),
-          right: $r('app.float.default_8')
-        })
-
-      TextInput({ placeholder: '输入文件名（如：myfile.txt）', text: this.fileName })
-        .width($r('app.float.default_336'))
-        .height($r('app.float.default_40'))
-        .borderRadius($r('app.float.default_8'))
-        .backgroundColor($r('app.color.start_window_background'))
-        .padding({ left: 10, right: 10 })
-        .onChange((value: string): void => {
-          this.fileName = value;
-        })
-        .margin({ bottom: $r('app.float.default_16') })
-
-      Text($r('app.string.textarea_default'))
-        .width($r('app.float.default_294'))
-        .height($r('app.float.default_22'))
-        .fontColor($r('app.color.text_color'))
-        .fontWeight(500)
-        .fontSize($r('app.float.default_16'))
-        .fontFamily('HarmonyHeiTi-Medium')
-        .lineHeight($r('app.float.default_22'))
-        .textAlign(TextAlign.Start)
-        .margin({
-          top: $r('app.float.default_13'),
-          bottom: $r('app.float.default_13'),
-          right: $r('app.float.default_8')
-        })
-
-      TextArea({ placeholder: '输入文件内容', text: this.content })
-        .width($r('app.float.default_336'))
-        .height($r('app.float.default_139'))
-        .borderRadius($r('app.float.default_24'))
-        .backgroundColor($r('app.color.start_window_background'))
-        .enableKeyboardOnFocus(false)
-        .onChange((value: string): void => {
-          this.content = value;
-        })
-
+      // 导入卡片
       Column() {
-        Button($r('app.string.button1'))
-          .width($r('app.float.default_312'))
-          .height($r('app.float.default_40'))
-          .onClick((): void => {
-            writeFile(this.content, this.fileName);
-            this.content = '';
-            this.fileName = '';
-            // 创建后更新文件列表
-            this.updateFileList();
-          })
+        Row({ space: 12 }) {
+          // 资源导入
+          Column() {
+            Text('📦')
+              .fontSize(28)
+            Text('资源导入')
+              .fontSize(13)
+              .fontColor('#333333')
+              .margin({ top: 6 })
+            Text('从应用资源')
+              .fontSize(10)
+              .fontColor('#8E8E93')
+              .margin({ top: 2 })
+          }
+          .layoutWeight(1)
+          .height(90)
+          .backgroundColor('#E8F5E9')
+          .borderRadius(12)
+          .justifyContent(FlexAlign.Center)
+          .onClick(() => this.copyAllRawFilesToSandbox())
+
+          // 文件选择
+          Column() {
+            Text('📁')
+              .fontSize(28)
+            Text('选择文件')
+              .fontSize(13)
+              .fontColor('#333333')
+              .margin({ top: 6 })
+            Text('从设备存储')
+              .fontSize(10)
+              .fontColor('#8E8E93')
+              .margin({ top: 2 })
+          }
+          .layoutWeight(1)
+          .height(90)
+          .backgroundColor('#E3F2FD')
+          .borderRadius(12)
+          .justifyContent(FlexAlign.Center)
+          .onClick(() => this.importWithPicker())
+        }
+        .width('100%')
+
+        // 状态提示
+        if (this.statusText.length > 0) {
+          Row() {
+            Text(this.statusType === 'success' ? '✓' : (this.statusType === 'error' ? '✗' : 'ℹ'))
+              .fontSize(14)
+              .fontColor(
+                this.statusType === 'success' ? '#34C759' :
+                  (this.statusType === 'error' ? '#FF3B30' : '#007AFF')
+              )
+            Text(this.statusText)
+              .fontSize(13)
+              .fontColor('#666666')
+              .margin({ left: 6 })
+          }
+          .width('100%')
+          .margin({ top: 12 })
+          .justifyContent(FlexAlign.Center)
+        }
       }
       .width('100%')
-      .margin({ top: 20 })
+      .padding(16)
+      .margin({ left: 16, right: 16 })
+      .backgroundColor(Color.White)
+      .borderRadius(16)
+
+      // 创建文件标题
+      Text('创建新文件')
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#333333')
+        .width('100%')
+        .padding({ left: 20, top: 24, bottom: 12 })
+
+      // 创建文件卡片
+      Column() {
+        // 文件名输入
+        Column() {
+          Text('文件名')
+            .fontSize(13)
+            .fontColor('#8E8E93')
+            .width('100%')
+            .margin({ bottom: 6 })
+
+          TextInput({ placeholder: '例如：笔记、会议记录', text: this.fileName })
+            .width('100%')
+            .height(44)
+            .backgroundColor('#F5F5F5')
+            .borderRadius(10)
+            .padding({ left: 12, right: 12 })
+            .onChange((value: string) => {
+              this.fileName = value;
+            })
+        }
+        .width('100%')
+        .margin({ bottom: 16 })
+
+        // 内容输入
+        Column() {
+          Text('文件内容')
+            .fontSize(13)
+            .fontColor('#8E8E93')
+            .width('100%')
+            .margin({ bottom: 6 })
+
+          TextArea({ placeholder: '在此输入文件内容...', text: this.content })
+            .width('100%')
+            .height(120)
+            .backgroundColor('#F5F5F5')
+            .borderRadius(10)
+            .padding(12)
+            .onChange((value: string) => {
+              this.content = value;
+            })
+        }
+        .width('100%')
+        .margin({ bottom: 16 })
+
+        // 创建按钮
+        Button('创建文件')
+          .width('100%')
+          .height(46)
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .backgroundColor('#007AFF')
+          .fontColor(Color.White)
+          .borderRadius(10)
+          .onClick(() => this.createFile())
+      }
+      .width('100%')
+      .padding(16)
+      .margin({ left: 16, right: 16 })
+      .backgroundColor(Color.White)
+      .borderRadius(16)
     }
     .width('100%')
-    .onAppear((): void => {
-      // 页面显示时自动执行初始化
-      // this.initializeRawFiles();
-    })
+    .height('100%')
+    .backgroundColor('#F5F5F5')
   }
-
-
 }

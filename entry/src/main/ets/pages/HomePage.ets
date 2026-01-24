@@ -17,6 +17,7 @@ import { ApplicationFileTab } from '../view/ApplicationFileTab';
 import { publicFilesTab } from '../view/PublicFilesTab';
 import { SmartClassifyTab } from '../view/SmartClassifyTab';
 import { KnowledgeTab } from '../view/KnowledgeTab';
+import { TrashTab } from '../view/TrashTab';
 
 @Entry
 @Component
@@ -114,13 +115,19 @@ struct HomePage {
         )
 
         TabContent() {
-          Scroll() {
-            KnowledgeTab()
-          }
-          .height($r('app.float.default_680'))
+          KnowledgeTab()
         }
         .height('100%')
         .tabBar(new SubTabBarStyle($r('app.string.bar7'))
+          .indicator({marginTop : $r('app.float.default_8')})
+          .labelStyle({font : {size : $r('app.float.default_16')}})
+        )
+
+        TabContent() {
+          TrashTab()
+        }
+        .height('100%')
+        .tabBar(new SubTabBarStyle('回收站')
           .indicator({marginTop : $r('app.float.default_8')})
           .labelStyle({font : {size : $r('app.float.default_16')}})
         )
@@ -128,10 +135,12 @@ struct HomePage {
       .barWidth($r('app.float.default_360'))
       .barHeight($r('app.float.default_56'))
       .width('100%')
+      .layoutWeight(1)
     }
     .backgroundColor($r('app.color.picture_background'))
-    .justifyContent(FlexAlign.Center)
+    .justifyContent(FlexAlign.Start)
     .width('100%')
+    .height('100%')
     .padding({ top: $r('app.float.default_48') })
   }
 }

@@ -14,7 +14,7 @@ HarmonyOS file management application (ArkTS/ETS) implementing:
 **Bundle**: `com.example.filesmanger`
 **Target SDK**: HarmonyOS 6.0.0 (SDK 20)
 **Compatible SDK**: HarmonyOS 5.0.5 (SDK 17)
-
+[个人日记_0118.txt](docs/%E4%B8%AA%E4%BA%BA%E6%97%A5%E8%AE%B0_0118.txt)
 ## Build and Development
 
 This is a HarmonyOS project using DevEco Studio. Build and run through DevEco Studio IDE:

@@ -1,1 +1,0 @@
-This is single file input test.

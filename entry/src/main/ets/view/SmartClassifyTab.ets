@@ -1,7 +1,7 @@
 /**
  * 智能分类 Tab 页面
  * 提供文档智能分类、摘要生成、关键词提取功能
- * 支持本地分类（基于关键词匹配）- 异步处理避免UI卡顿
+ * 支持本地分类（基于关键词匹配）+ DeepSeek AI 摘要
  */
 
 import { fileIo } from '@kit.CoreFileKit';
@@ -12,8 +12,13 @@ import {
   getCategoryDisplayName
 } from '../common/types/AIDocTypes';
 import { SimilarityCalculator } from '../common/utils/SimilarityCalculator';
-import { ContentParser, DocumentFormat } from '../common/utils/ContentParser'; // 导入 ContentParser
+import { ContentParser, DocumentFormat } from '../common/utils/ContentParser';
+import { DeepSeekService, AICallResult } from '../common/utils/DeepSeekService';
+import { DiffUtils, DiffLine, DiffType, DiffResult } from '../common/utils/DiffUtils';
+import { TrashManager } from '../common/utils/TrashManager';
 
+// API Key 存储文件名
+const API_KEY_FILE = '.deepseek_api_key';
 
 // 文件分析结果
 interface FileAnalysis {
@@ -25,6 +30,14 @@ interface FileAnalysis {
   summary: string;
   wordCount: number;
   isAnalyzed: boolean;
+}
+
+// 相似文档结果
+interface SimilarDoc {
+  file1: string;
+  file2: string;
+  score: number;
+  sharedTerms: string[];
 }
 
 // 类别统计
@@ -62,7 +75,21 @@ export struct SmartClassifyTab {
   @State messageText: string = '';
   @State messageType: string = 'info';
   @State analyzedCount: number = 0;
-  private contentParser: ContentParser | null = null; // 新增
+  @State similarDocs: SimilarDoc[] = [];
+  @State showSimilarPanel: boolean = false;
+  @State apiKey: string = '';
+  @State showApiKeyInput: boolean = false;
+  @State apiKeyInput: string = '';
+  @State useAISummary: boolean = true;
+  // 差异对比相关状态
+  @State showDiffPanel: boolean = false;
+  @State diffFile1: string = '';
+  @State diffFile2: string = '';
+  @State diffResult: DiffResult | null = null;
+  @State isDeleting: boolean = false;
+  private contentParser: ContentParser | null = null;
+  private documentContents: Map<string, string> = new Map();
+  private trashManager: TrashManager | null = null;
 
   private filesDir: string = '';
   private similarityCalculator: SimilarityCalculator | null = null;
@@ -76,6 +103,8 @@ export struct SmartClassifyTab {
     this.similarityCalculator = SimilarityCalculator.getInstance(context);
     // 初始化 ContentParser
     this.contentParser = ContentParser.getInstance(context);
+    // 初始化 TrashManager
+    this.trashManager = TrashManager.getInstance(context);
 
     // 初始化类别颜色
     this.initCategoryColors();
@@ -83,10 +112,51 @@ export struct SmartClassifyTab {
     // 初始化类别规则
     this.initCategoryRules();
 
+    // 加载保存的 API Key
+    this.loadApiKey();
+
     // 延迟加载文件列表
     setTimeout((): void => {
       this.loadFilesAsync();
     }, 200);
+  }
+
+  // 加载 API Key
+  private loadApiKey(): void {
+    try {
+      const keyPath = `${this.filesDir}/${API_KEY_FILE}`;
+      if (fileIo.accessSync(keyPath)) {
+        const file = fileIo.openSync(keyPath, fileIo.OpenMode.READ_ONLY);
+        const stat = fileIo.statSync(keyPath);
+        const buffer = new ArrayBuffer(stat.size);
+        fileIo.readSync(file.fd, buffer);
+        fileIo.closeSync(file);
+        const decoder = new util.TextDecoder('utf-8');
+        this.apiKey = decoder.decodeWithStream(new Uint8Array(buffer), { stream: false }).trim();
+        console.info('[SmartClassifyTab] API Key 已加载');
+      }
+    } catch (error) {
+      console.warn('[SmartClassifyTab] 加载 API Key 失败:', error);
+    }
+  }
+
+  // 保存 API Key
+  private saveApiKey(key: string): void {
+    try {
+      const keyPath = `${this.filesDir}/${API_KEY_FILE}`;
+      const file = fileIo.openSync(keyPath, fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE | fileIo.OpenMode.TRUNC);
+      const encoder = new util.TextEncoder();
+      const data = encoder.encodeInto(key);
+      fileIo.writeSync(file.fd, data.buffer);
+      fileIo.closeSync(file);
+      this.apiKey = key;
+      this.showApiKeyInput = false;
+      this.showToast('API Key 已保存', 'success');
+      console.info('[SmartClassifyTab] API Key 已保存');
+    } catch (error) {
+      console.error('[SmartClassifyTab] 保存 API Key 失败:', error);
+      this.showToast('保存失败', 'error');
+    }
   }
 
   // 初始化类别颜色
@@ -315,29 +385,102 @@ export struct SmartClassifyTab {
     }
   }
 
-  // 生成摘要
-  private generateSummary(content: string): string {
+  // 生成摘要（支持 AI 和本地两种模式）
+  private async generateSummaryAsync(content: string): Promise<string> {
     if (content.length === 0) {
       return '';
     }
 
-    const sentences: string[] = content.split(/[。！？\.\!\?]/);
+    // 如果启用 AI 摘要且有 API Key，使用 DeepSeek
+    if (this.useAISummary && this.apiKey && this.apiKey.length > 0) {
+      try {
+        const result: AICallResult = await DeepSeekService.summarizeDocument(content, this.apiKey);
+        if (result.success && result.content.length > 0) {
+          return result.content;
+        }
+      } catch (error) {
+        console.warn('[SmartClassifyTab] AI 摘要失败，使用本地摘要:', error);
+      }
+    }
+
+    // 本地摘要作为后备
+    return this.generateLocalSummary(content);
+  }
+
+  // 本地生成摘要
+  private generateLocalSummary(content: string): string {
+    if (content.length === 0) {
+      return '';
+    }
+
+    // 清理内容，移除多余空白
+    const cleanContent = content.replace(/\s+/g, ' ').trim();
+
+    // 按句子分割（支持中英文标点）
+    const sentences: string[] = cleanContent.split(/[。！？；\.\!\?\;]+/);
     const validSentences: string[] = sentences.filter((s: string): boolean => {
-      return s.trim().length > 10;
+      const trimmed = s.trim();
+      // 过滤太短或包含乱码的句子
+      return trimmed.length > 8 && this.isReadableText(trimmed);
     });
 
+    if (validSentences.length === 0) {
+      // 如果没有有效句子，直接截取前200字
+      const fallback = cleanContent.substring(0, 200);
+      return this.isReadableText(fallback) ? fallback + '...' : '';
+    }
+
+    // 取前3-4句话，目标200-300字
     const summaryParts: string[] = [];
-    const maxSentences = Math.min(2, validSentences.length);
-    for (let i = 0; i < maxSentences; i++) {
-      summaryParts.push(validSentences[i].trim());
+    let totalLength = 0;
+    const maxLength = 280;
+    const maxSentences = 4;
+
+    for (let i = 0; i < validSentences.length && summaryParts.length < maxSentences; i++) {
+      const sentence = validSentences[i].trim();
+      if (totalLength + sentence.length <= maxLength) {
+        summaryParts.push(sentence);
+        totalLength += sentence.length;
+      } else if (summaryParts.length === 0) {
+        // 第一句太长，截取部分
+        summaryParts.push(sentence.substring(0, maxLength));
+        break;
+      } else {
+        break;
+      }
     }
 
     let summary = summaryParts.join('。');
-    if (summary.length > 150) {
-      summary = summary.substring(0, 150) + '...';
+    // 确保以标点结尾
+    if (summary.length > 0 && !summary.match(/[。！？；\.\!\?\;]$/)) {
+      summary += '。';
     }
 
     return summary;
+  }
+
+  // 检查文本是否可读（非乱码）
+  private isReadableText(text: string): boolean {
+    if (text.length === 0) return false;
+
+    // 统计可读字符比例
+    let readableCount = 0;
+    for (let i = 0; i < text.length; i++) {
+      const code = text.charCodeAt(i);
+      // 中文字符、英文字母、数字、常见标点
+      if ((code >= 0x4E00 && code <= 0x9FFF) || // 中文
+        (code >= 0x0041 && code <= 0x005A) || // A-Z
+        (code >= 0x0061 && code <= 0x007A) || // a-z
+        (code >= 0x0030 && code <= 0x0039) || // 0-9
+        code === 0x0020 || // 空格
+        (code >= 0x3000 && code <= 0x303F) || // 中文标点
+        (code >= 0xFF00 && code <= 0xFFEF)) { // 全角字符
+        readableCount++;
+      }
+    }
+
+    // 可读字符占比超过60%认为是有效文本
+    return (readableCount / text.length) > 0.6;
   }
 
   // 修改：分析单个文件（需要改为 async）
@@ -348,14 +491,17 @@ export struct SmartClassifyTab {
     }
 
     try {
-      const content = await this.readFileContent(file.filename); // 改为 await
+      const content = await this.readFileContent(file.filename);
       if (!content || content.length < 10) {
         return null;
       }
 
+      // 存储内容用于相似度计算
+      this.documentContents.set(file.filename, content);
+
       const classification = this.classifyLocal(content);
       const keywords = this.extractKeywords(content);
-      const summary = this.generateSummary(content);
+      const summary = await this.generateSummaryAsync(content);
 
       return {
         filename: file.filename,
@@ -371,6 +517,130 @@ export struct SmartClassifyTab {
       console.error('[SmartClassifyTab] 分析文件失败:', file.filename, JSON.stringify(error));
       return null;
     }
+  }
+
+  // 计算文档相似度
+  private async calculateSimilarity(): Promise<void> {
+    if (!this.similarityCalculator || this.documentContents.size < 2) {
+      return;
+    }
+
+    try {
+      this.showToast('正在计算文档相似度...', 'info');
+
+      const results = await this.similarityCalculator.batchCalculateSimilarity(
+        this.documentContents,
+        0.25 // 相似度阈值
+      );
+
+      // 转换为 SimilarDoc 格式
+      const similarResults: SimilarDoc[] = [];
+      results.forEach((r): void => {
+        similarResults.push({
+          file1: r.file1,
+          file2: r.file2,
+          score: r.score,
+          sharedTerms: r.sharedTerms
+        });
+      });
+
+      this.similarDocs = similarResults.slice(0, 20); // 最多显示20对
+
+      if (this.similarDocs.length > 0) {
+        this.showToast(`发现 ${this.similarDocs.length} 对相似文档`, 'success');
+        this.showSimilarPanel = true;
+      }
+    } catch (error) {
+      console.error('[SmartClassifyTab] 相似度计算失败:', JSON.stringify(error));
+    }
+  }
+
+  // 显示差异对比
+  private async showDiff(file1: string, file2: string): Promise<void> {
+    const content1 = this.documentContents.get(file1) || '';
+    const content2 = this.documentContents.get(file2) || '';
+
+    if (!content1 || !content2) {
+      this.showToast('无法读取文件内容', 'error');
+      return;
+    }
+
+    this.diffFile1 = file1;
+    this.diffFile2 = file2;
+    this.diffResult = DiffUtils.diff(content1, content2);
+    this.showDiffPanel = true;
+  }
+
+  // 删除重复文件（移动到回收站）
+  private async deleteDuplicate(fileToDelete: string): Promise<void> {
+    if (this.isDeleting || !this.trashManager) return;
+    this.isDeleting = true;
+
+    try {
+      if (this.trashManager.moveToTrash(fileToDelete)) {
+        // 从列表中移除
+        this.fileList = this.fileList.filter((f: FileAnalysis): boolean => f.filename !== fileToDelete);
+        this.documentContents.delete(fileToDelete);
+
+        // 从相似文档中移除相关项
+        this.similarDocs = this.similarDocs.filter((doc: SimilarDoc): boolean =>
+          doc.file1 !== fileToDelete && doc.file2 !== fileToDelete
+        );
+
+        this.showToast(`已移至回收站: ${fileToDelete}`, 'success');
+        this.showDiffPanel = false;
+      } else {
+        this.showToast('删除失败', 'error');
+      }
+    } catch (error) {
+      console.error('[SmartClassifyTab] 删除文件失败:', JSON.stringify(error));
+      this.showToast('删除失败', 'error');
+    } finally {
+      this.isDeleting = false;
+    }
+  }
+
+  // 一键删除所有100%重复文件（移动到回收站）
+  private async deleteAllDuplicates(): Promise<void> {
+    if (this.isDeleting || !this.trashManager) return;
+
+    const duplicates = this.similarDocs.filter((doc: SimilarDoc): boolean => doc.score >= 0.99);
+    if (duplicates.length === 0) {
+      this.showToast('没有完全重复的文件', 'info');
+      return;
+    }
+
+    this.isDeleting = true;
+    let deleted = 0;
+    const toDelete = new Set<string>();
+
+    // 收集要删除的文件（每对保留第一个）
+    duplicates.forEach((doc: SimilarDoc): void => {
+      if (!toDelete.has(doc.file1)) {
+        toDelete.add(doc.file2);
+      }
+    });
+
+    // 执行删除（移动到回收站）
+    toDelete.forEach((filename: string): void => {
+      if (this.trashManager && this.trashManager.moveToTrash(filename)) {
+        deleted++;
+      }
+    });
+
+    // 更新列表
+    this.fileList = this.fileList.filter((f: FileAnalysis): boolean => !toDelete.has(f.filename));
+    toDelete.forEach((filename: string): void => {
+      this.documentContents.delete(filename);
+    });
+
+    // 更新相似文档列表
+    this.similarDocs = this.similarDocs.filter((doc: SimilarDoc): boolean =>
+      !toDelete.has(doc.file1) && !toDelete.has(doc.file2)
+    );
+
+    this.showToast(`已移至回收站 ${deleted} 个文件`, 'success');
+    this.isDeleting = false;
   }
 
 
@@ -416,6 +686,11 @@ export struct SmartClassifyTab {
       }
 
       this.showToast(`分析完成！共分析 ${analyzed} 个文件`, 'success');
+
+      // 计算相似度
+      if (analyzed >= 2) {
+        await this.calculateSimilarity();
+      }
     } catch (error) {
       console.error('[SmartClassifyTab] 分析过程出错:', JSON.stringify(error));
       this.showToast('分析过程出错', 'error');
@@ -528,6 +803,39 @@ export struct SmartClassifyTab {
       .padding({ left: 16, right: 16, top: 12, bottom: 8 })
       .alignItems(HorizontalAlign.Start)
 
+      // AI 设置行
+      Row({ space: 8 }) {
+        Toggle({ type: ToggleType.Switch, isOn: this.useAISummary })
+          .onChange((isOn: boolean): void => {
+            this.useAISummary = isOn;
+          })
+          .width(45)
+          .height(26)
+
+        Text('AI摘要')
+          .fontSize(13)
+          .fontColor('#333333')
+
+        Blank()
+
+        Text(this.apiKey ? 'API已设置' : '未设置API')
+          .fontSize(12)
+          .fontColor(this.apiKey ? '#34C759' : '#FF9500')
+
+        Button('设置')
+          .onClick((): void => {
+            this.apiKeyInput = this.apiKey;
+            this.showApiKeyInput = true;
+          })
+          .height(28)
+          .fontSize(12)
+          .backgroundColor('#E0E0E0')
+          .fontColor('#333333')
+          .borderRadius(6)
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, bottom: 8 })
+
       // 操作按钮
       Row({ space: 10 }) {
         Button(this.isAnalyzing ? '分析中...' : '开始分析')
@@ -553,6 +861,20 @@ export struct SmartClassifyTab {
           .fontColor(Color.White)
           .borderRadius(8)
           .layoutWeight(1)
+
+        // 相似文档按钮
+        if (this.similarDocs.length > 0 && !this.showSimilarPanel) {
+          Button(`相似(${this.similarDocs.length})`)
+            .onClick((): void => {
+              this.showSimilarPanel = true;
+            })
+            .height(40)
+            .fontSize(14)
+            .backgroundColor('#FF9500')
+            .fontColor(Color.White)
+            .borderRadius(8)
+            .width(80)
+        }
       }
       .width('100%')
       .padding({ left: 16, right: 16, bottom: 12 })
@@ -664,6 +986,132 @@ export struct SmartClassifyTab {
         .width('100%')
         .height(70)
         .margin({ bottom: 12 })
+      }
+
+      // 相似文档面板
+      if (this.showSimilarPanel && this.similarDocs.length > 0) {
+        Column() {
+          Row() {
+            Text('相似文档')
+              .fontSize(16)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#333333')
+            Blank()
+            Text(`${this.similarDocs.length} 对`)
+              .fontSize(12)
+              .fontColor('#8E8E93')
+
+            // 一键去重按钮
+            if (this.similarDocs.some((d: SimilarDoc): boolean => d.score >= 0.99)) {
+              Button('一键去重')
+                .height(28)
+                .fontSize(12)
+                .backgroundColor('#FF3B30')
+                .fontColor(Color.White)
+                .borderRadius(6)
+                .margin({ left: 8 })
+                .enabled(!this.isDeleting)
+                .onClick((): void => {
+                  this.deleteAllDuplicates();
+                })
+            }
+
+            Button('收起')
+              .height(28)
+              .fontSize(12)
+              .backgroundColor('#E0E0E0')
+              .fontColor('#666666')
+              .borderRadius(6)
+              .margin({ left: 8 })
+              .onClick((): void => {
+                this.showSimilarPanel = false;
+              })
+          }
+          .width('100%')
+          .margin({ bottom: 8 })
+
+          List({ space: 6 }) {
+            ForEach(this.similarDocs.slice(0, 10), (doc: SimilarDoc) => {
+              ListItem() {
+                Column() {
+                  Row() {
+                    // 相似度标签
+                    Text(`${(doc.score * 100).toFixed(0)}%`)
+                      .fontSize(14)
+                      .fontWeight(FontWeight.Bold)
+                      .fontColor(doc.score >= 0.99 ? '#FF3B30' : '#FF9500')
+                      .width(45)
+
+                    Column() {
+                      Text(doc.file1)
+                        .fontSize(12)
+                        .fontColor('#333333')
+                        .maxLines(1)
+                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      Text(doc.file2)
+                        .fontSize(12)
+                        .fontColor('#666666')
+                        .maxLines(1)
+                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                        .margin({ top: 2 })
+                    }
+                    .layoutWeight(1)
+                    .alignItems(HorizontalAlign.Start)
+
+                    // 操作按钮
+                    Row({ space: 4 }) {
+                      Button('对比')
+                        .height(26)
+                        .fontSize(11)
+                        .backgroundColor('#007AFF')
+                        .fontColor(Color.White)
+                        .borderRadius(4)
+                        .onClick((): void => {
+                          this.showDiff(doc.file1, doc.file2);
+                        })
+
+                      if (doc.score >= 0.99) {
+                        Button('删除')
+                          .height(26)
+                          .fontSize(11)
+                          .backgroundColor('#FF3B30')
+                          .fontColor(Color.White)
+                          .borderRadius(4)
+                          .onClick((): void => {
+                            this.deleteDuplicate(doc.file2);
+                          })
+                      }
+                    }
+                  }
+                  .width('100%')
+
+                  if (doc.sharedTerms.length > 0) {
+                    Row() {
+                      Text('共同词: ')
+                        .fontSize(10)
+                        .fontColor('#8E8E93')
+                      Text(doc.sharedTerms.slice(0, 3).join(', '))
+                        .fontSize(10)
+                        .fontColor('#007AFF')
+                    }
+                    .width('100%')
+                    .margin({ top: 4 })
+                  }
+                }
+                .padding(8)
+                .backgroundColor('#FAFAFA')
+                .borderRadius(8)
+              }
+            })
+          }
+          .width('100%')
+          .height(this.similarDocs.length > 3 ? 180 : this.similarDocs.length * 65)
+        }
+        .width('100%')
+        .padding(12)
+        .backgroundColor('#FFF8E1')
+        .borderRadius(12)
+        .margin({ left: 16, right: 16, bottom: 12 })
       }
 
       // 搜索框
@@ -962,6 +1410,231 @@ export struct SmartClassifyTab {
         .backgroundColor(Color.White)
         .borderRadius(16)
         .position({ x: '5%', y: '15%' })
+      }
+
+      // API Key 设置弹窗
+      if (this.showApiKeyInput) {
+        Stack()
+          .width('100%')
+          .height('100%')
+          .backgroundColor('rgba(0, 0, 0, 0.5)')
+          .onClick((): void => {
+            this.showApiKeyInput = false;
+          })
+          .position({ x: 0, y: 0 })
+
+        Column() {
+          Text('设置 DeepSeek API Key')
+            .fontSize(18)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#333333')
+            .margin({ bottom: 16 })
+
+          TextInput({ placeholder: '请输入 API Key (sk-...)', text: this.apiKeyInput })
+            .width('100%')
+            .height(44)
+            .backgroundColor('#F0F0F0')
+            .borderRadius(8)
+            .type(InputType.Normal)
+            .onChange((value: string): void => {
+              this.apiKeyInput = value;
+            })
+            .margin({ bottom: 12 })
+
+          Text('API Key 将保存在本地，下次启动自动加载')
+            .fontSize(12)
+            .fontColor('#8E8E93')
+            .margin({ bottom: 16 })
+
+          Row({ space: 12 }) {
+            Button('取消')
+              .layoutWeight(1)
+              .height(44)
+              .backgroundColor('#E0E0E0')
+              .fontColor('#333333')
+              .borderRadius(8)
+              .onClick((): void => {
+                this.showApiKeyInput = false;
+              })
+
+            Button('保存')
+              .layoutWeight(1)
+              .height(44)
+              .backgroundColor('#007AFF')
+              .fontColor(Color.White)
+              .borderRadius(8)
+              .onClick((): void => {
+                if (DeepSeekService.validateApiKey(this.apiKeyInput)) {
+                  this.saveApiKey(this.apiKeyInput);
+                } else {
+                  this.showToast('API Key 格式不正确，应以 sk- 开头', 'error');
+                }
+              })
+          }
+          .width('100%')
+        }
+        .width('85%')
+        .padding(20)
+        .backgroundColor(Color.White)
+        .borderRadius(16)
+        .position({ x: '7.5%', y: '30%' })
+      }
+
+      // 差异对比弹窗
+      if (this.showDiffPanel && this.diffResult) {
+        Stack()
+          .width('100%')
+          .height('100%')
+          .backgroundColor('rgba(0, 0, 0, 0.5)')
+          .onClick((): void => {
+            this.showDiffPanel = false;
+          })
+          .position({ x: 0, y: 0 })
+
+        Column() {
+          // 标题栏
+          Row() {
+            Text('文档对比')
+              .fontSize(18)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#333333')
+            Blank()
+            Button('×')
+              .fontSize(20)
+              .fontColor('#666666')
+              .backgroundColor(Color.Transparent)
+              .onClick((): void => {
+                this.showDiffPanel = false;
+              })
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 12, bottom: 8 })
+
+          // 文件名
+          Row() {
+            Column() {
+              Text('文件1')
+                .fontSize(11)
+                .fontColor('#8E8E93')
+              Text(this.diffFile1)
+                .fontSize(12)
+                .fontColor('#333333')
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+
+            Column() {
+              Text('文件2')
+                .fontSize(11)
+                .fontColor('#8E8E93')
+              Text(this.diffFile2)
+                .fontSize(12)
+                .fontColor('#333333')
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.End)
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, bottom: 8 })
+
+          // 统计信息
+          Row({ space: 12 }) {
+            Text(`相同: ${this.diffResult.sameCount}`)
+              .fontSize(12)
+              .fontColor('#34C759')
+            Text(`删除: ${this.diffResult.removedCount}`)
+              .fontSize(12)
+              .fontColor('#FF3B30')
+            Text(`新增: ${this.diffResult.addedCount}`)
+              .fontSize(12)
+              .fontColor('#007AFF')
+            Text(`相似度: ${(this.diffResult.similarity * 100).toFixed(0)}%`)
+              .fontSize(12)
+              .fontColor('#FF9500')
+              .fontWeight(FontWeight.Bold)
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, bottom: 8 })
+
+          // 差异内容
+          Scroll() {
+            Column() {
+              ForEach(this.diffResult.lines.slice(0, 100), (line: DiffLine, index: number) => {
+                Row() {
+                  Text(line.lineNum1 ? `${line.lineNum1}` : ' ')
+                    .fontSize(10)
+                    .fontColor('#8E8E93')
+                    .width(25)
+                    .textAlign(TextAlign.End)
+                  Text(line.lineNum2 ? `${line.lineNum2}` : ' ')
+                    .fontSize(10)
+                    .fontColor('#8E8E93')
+                    .width(25)
+                    .textAlign(TextAlign.End)
+                    .margin({ right: 6 })
+                  Text(line.type === DiffType.ADDED ? '+' : (line.type === DiffType.REMOVED ? '-' : ' '))
+                    .fontSize(12)
+                    .fontColor(line.type === DiffType.ADDED ? '#007AFF' : (line.type === DiffType.REMOVED ? '#FF3B30' : '#8E8E93'))
+                    .width(14)
+                  Text(line.content || ' ')
+                    .fontSize(12)
+                    .fontColor(line.type === DiffType.SAME ? '#333333' : (line.type === DiffType.ADDED ? '#007AFF' : '#FF3B30'))
+                    .layoutWeight(1)
+                    .maxLines(2)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                }
+                .width('100%')
+                .padding({ top: 2, bottom: 2, left: 4, right: 4 })
+                .backgroundColor(
+                  line.type === DiffType.ADDED ? '#E3F2FD' :
+                    (line.type === DiffType.REMOVED ? '#FFEBEE' : Color.Transparent)
+                )
+              })
+            }
+            .width('100%')
+          }
+          .layoutWeight(1)
+          .backgroundColor('#FAFAFA')
+          .margin({ left: 8, right: 8 })
+          .borderRadius(8)
+
+          // 操作按钮
+          Row({ space: 12 }) {
+            Button('关闭')
+              .layoutWeight(1)
+              .height(40)
+              .backgroundColor('#E0E0E0')
+              .fontColor('#333333')
+              .borderRadius(8)
+              .onClick((): void => {
+                this.showDiffPanel = false;
+              })
+
+            if (this.diffResult.similarity >= 0.99) {
+              Button(`删除 ${this.diffFile2}`)
+                .layoutWeight(1)
+                .height(40)
+                .backgroundColor('#FF3B30')
+                .fontColor(Color.White)
+                .borderRadius(8)
+                .enabled(!this.isDeleting)
+                .onClick((): void => {
+                  this.deleteDuplicate(this.diffFile2);
+                })
+            }
+          }
+          .width('100%')
+          .padding(12)
+        }
+        .width('95%')
+        .height('80%')
+        .backgroundColor(Color.White)
+        .borderRadius(16)
+        .position({ x: '2.5%', y: '10%' })
       }
     }
     .width('100%')

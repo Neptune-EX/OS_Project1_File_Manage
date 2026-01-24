@@ -1,0 +1,76 @@
+RESTful API 设计规范技术文档
+
+版本：v1.0
+更新日期：2024年1月
+
+一、概述
+
+本文档定义了公司内部RESTful API的设计规范和最佳实践，旨在统一API风格，提高开发效率和系统可维护性。
+
+二、URL设计规范
+
+1. 使用名词而非动词
+   正确：GET /users
+   错误：GET /getUsers
+
+2. 使用复数形式
+   正确：/users, /articles
+   错误：/user, /article
+
+3. 层级关系使用嵌套
+   示例：GET /users/{userId}/orders
+
+4. 使用连字符分隔单词
+   正确：/user-profiles
+   错误：/userProfiles, /user_profiles
+
+三、HTTP方法使用
+
+| 方法 | 用途 | 示例 |
+|------|------|------|
+| GET | 获取资源 | GET /users |
+| POST | 创建资源 | POST /users |
+| PUT | 完整更新 | PUT /users/1 |
+| PATCH | 部分更新 | PATCH /users/1 |
+| DELETE | 删除资源 | DELETE /users/1 |
+
+四、状态码规范
+
+- 200 OK：请求成功
+- 201 Created：创建成功
+- 204 No Content：删除成功
+- 400 Bad Request：请求参数错误
+- 401 Unauthorized：未认证
+- 403 Forbidden：无权限
+- 404 Not Found：资源不存在
+- 500 Internal Server Error：服务器错误
+
+五、响应格式
+
+统一使用JSON格式，结构如下：
+
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    // 业务数据
+  },
+  "timestamp": 1705312800000
+}
+
+六、分页参数
+
+- page：页码，从1开始
+- pageSize：每页数量，默认20
+- total：总记录数（响应中返回）
+
+七、版本控制
+
+在URL中包含版本号：/api/v1/users
+
+八、安全规范
+
+1. 使用HTTPS
+2. 实现请求签名
+3. 敏感数据加密传输
+4. 实现访问频率限制

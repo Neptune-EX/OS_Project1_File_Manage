@@ -1,0 +1,92 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta http-equiv="Content-Style-Type" content="text/css">
+  <title></title>
+  <meta name="Generator" content="Cocoa HTML Writer">
+  <meta name="CocoaVersion" content="2575.7">
+  <style type="text/css">
+    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px 'Helvetica Light'}
+    p.p2 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px 'Helvetica Light'; min-height: 14.0px}
+  </style>
+</head>
+<body>
+<p class="p1">RESTful API 设计规范技术文档</p>
+<p class="p2"><br></p>
+<p class="p1">版本：v1.0</p>
+<p class="p1">更新日期：2024年1月</p>
+<p class="p2"><br></p>
+<p class="p1">一、概述</p>
+<p class="p2"><br></p>
+<p class="p1">本文档定义了公司内部RESTful API的设计规范和最佳实践，旨在统一API风格，提高开发效率和系统可维护性。</p>
+<p class="p2"><br></p>
+<p class="p1">二、URL设计规范</p>
+<p class="p2"><br></p>
+<p class="p1">1. 使用名词而非动词</p>
+<p class="p1"><span class="Apple-converted-space">   </span>正确：GET /users</p>
+<p class="p1"><span class="Apple-converted-space">   </span>错误：GET /getUsers</p>
+<p class="p2"><br></p>
+<p class="p1">2. 使用复数形式</p>
+<p class="p1"><span class="Apple-converted-space">   </span>正确：/users, /articles</p>
+<p class="p1"><span class="Apple-converted-space">   </span>错误：/user, /article</p>
+<p class="p2"><br></p>
+<p class="p1">3. 层级关系使用嵌套</p>
+<p class="p1"><span class="Apple-converted-space">   </span>示例：GET /users/{userId}/orders</p>
+<p class="p2"><br></p>
+<p class="p1">4. 使用连字符分隔单词</p>
+<p class="p1"><span class="Apple-converted-space">   </span>正确：/user-profiles</p>
+<p class="p1"><span class="Apple-converted-space">   </span>错误：/userProfiles, /user_profiles</p>
+<p class="p2"><br></p>
+<p class="p1">三、HTTP方法使用</p>
+<p class="p2"><br></p>
+<p class="p1">| 方法 | 用途 | 示例 |</p>
+<p class="p1">|------|------|------|</p>
+<p class="p1">| GET | 获取资源 | GET /users |</p>
+<p class="p1">| POST | 创建资源 | POST /users |</p>
+<p class="p1">| PUT | 完整更新 | PUT /users/1 |</p>
+<p class="p1">| PATCH | 部分更新 | PATCH /users/1 |</p>
+<p class="p1">| DELETE | 删除资源 | DELETE /users/1 |</p>
+<p class="p2"><br></p>
+<p class="p1">四、状态码规范</p>
+<p class="p2"><br></p>
+<p class="p1">- 200 OK：请求成功</p>
+<p class="p1">- 201 Created：创建成功</p>
+<p class="p1">- 204 No Content：删除成功</p>
+<p class="p1">- 400 Bad Request：请求参数错误</p>
+<p class="p1">- 401 Unauthorized：未认证</p>
+<p class="p1">- 403 Forbidden：无权限</p>
+<p class="p1">- 404 Not Found：资源不存在</p>
+<p class="p1">- 500 Internal Server Error：服务器错误</p>
+<p class="p2"><br></p>
+<p class="p1">五、响应格式</p>
+<p class="p2"><br></p>
+<p class="p1">统一使用JSON格式，结构如下：</p>
+<p class="p2"><br></p>
+<p class="p1">{</p>
+<p class="p1"><span class="Apple-converted-space">  </span>"code": 200,</p>
+<p class="p1"><span class="Apple-converted-space">  </span>"message": "success",</p>
+<p class="p1"><span class="Apple-converted-space">  </span>"data": {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>// 业务数据</p>
+<p class="p1"><span class="Apple-converted-space">  </span>},</p>
+<p class="p1"><span class="Apple-converted-space">  </span>"timestamp": 1705312800000</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">六、分页参数</p>
+<p class="p2"><br></p>
+<p class="p1">- page：页码，从1开始</p>
+<p class="p1">- pageSize：每页数量，默认20</p>
+<p class="p1">- total：总记录数（响应中返回）</p>
+<p class="p2"><br></p>
+<p class="p1">七、版本控制</p>
+<p class="p2"><br></p>
+<p class="p1">在URL中包含版本号：/api/v1/users</p>
+<p class="p2"><br></p>
+<p class="p1">八、安全规范</p>
+<p class="p2"><br></p>
+<p class="p1">1. 使用HTTPS</p>
+<p class="p1">2. 实现请求签名</p>
+<p class="p1">3. 敏感数据加密传输</p>
+<p class="p1">4. 实现访问频率限制</p>
+</body>
+</html>
