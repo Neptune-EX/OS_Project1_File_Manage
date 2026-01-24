@@ -16,8 +16,13 @@
 import { fileIo } from '@kit.CoreFileKit';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { UIContext } from '@ohos.arkui.UIContext';
 
-const uiContext: UIContext | undefined = AppStorage.get('uiContext');
+const uiContext: UIContext | undefined  = AppStorage.get('uiContext');
+
+if (!uiContext) {
+  console.error('uiContext is undefined!');
+}
 let context = uiContext!.getHostContext() as common.UIAbilityContext;
 let filesDir = context.filesDir;
 

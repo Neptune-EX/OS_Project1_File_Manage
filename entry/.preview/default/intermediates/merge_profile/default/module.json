@@ -1,0 +1,149 @@
+{
+	"app": {
+		"bundleName": "com.example.filesmanger",
+		"vendor": "example",
+		"versionCode": 1000000,
+		"versionName": "1.0.0",
+		"icon": "$media:app_icon",
+		"label": "$string:app_name",
+		"apiReleaseType": "Release",
+		"compileSdkVersion": "6.0.2.130",
+		"targetAPIVersion": 60000020,
+		"minAPIVersion": 60000020,
+		"compileSdkType": "HarmonyOS",
+		"targetMinorAPIVersion": 0,
+		"targetPatchAPIVersion": 0,
+		"appEnvironments": [],
+		"bundleType": "app",
+		"buildMode": "debug",
+		"debug": true
+	},
+	"module": {
+		"name": "entry",
+		"type": "entry",
+		"description": "$string:module_desc",
+		"mainElement": "EntryAbility",
+		"deviceTypes": [
+			"phone",
+			"tablet",
+			"2in1"
+		],
+		"deliveryWithInstall": true,
+		"installationFree": false,
+		"pages": "$profile:main_pages",
+		"abilities": [
+			{
+				"name": "EntryAbility",
+				"srcEntry": "./ets/entryability/EntryAbility.ets",
+				"description": "$string:EntryAbility_desc",
+				"icon": "$media:appiconnew",
+				"label": "$string:EntryAbility_label",
+				"startWindowIcon": "$media:scrrenicon",
+				"startWindowBackground": "$color:start_window_background",
+				"exported": true,
+				"skills": [
+					{
+						"entities": [
+							"entity.system.home"
+						],
+						"actions": [
+							"action.system.home"
+						]
+					},
+					{
+						"entities": [
+							"entity.system.browsable"
+						],
+						"actions": [
+							"action.system.home",
+							"android.intent.action.VIEW",
+							"ohos.want.action.viewData"
+						],
+						"uris": [
+							{
+								"scheme": "file",
+								"host": "*",
+								"type": "*/*"
+							},
+							{
+								"scheme": "internal",
+								"host": "app",
+								"type": "*/*"
+							},
+							{
+								"scheme": "dataability",
+								"host": "*",
+								"type": "*/*"
+							}
+						]
+					}
+				],
+				"metadata": [
+					{
+						"name": "ohos.ability.filetypes",
+						"value": "pdf,doc,docx,xls,xlsx,ppt,pptx,txt,rtf,jpg,jpeg,png,gif,bmp,mp3,mp4,avi,mov,zip,rar,7z"
+					}
+				]
+			}
+		],
+		"requestPermissions": [
+			{
+				"name": "ohos.permission.READ_MEDIA",
+				"reason": "$string:read_media_reason",
+				"usedScene": {
+					"abilities": [
+						"EntryAbility"
+					],
+					"when": "always"
+				}
+			},
+			{
+				"name": "ohos.permission.WRITE_MEDIA",
+				"reason": "$string:write_media_reason",
+				"usedScene": {
+					"abilities": [
+						"EntryAbility"
+					],
+					"when": "always"
+				}
+			},
+			{
+				"name": "ohos.permission.MEDIA_LOCATION",
+				"reason": "$string:media_location_reason",
+				"usedScene": {
+					"abilities": [
+						"EntryAbility"
+					],
+					"when": "always"
+				}
+			},
+			{
+				"name": "ohos.permission.INTERNET",
+				"reason": "$string:media_internet_access",
+				"usedScene": {
+					"abilities": [
+						"EntryAbility"
+					],
+					"when": "always"
+				}
+			},
+			{
+				"name": "ohos.permission.GET_NETWORK_INFO",
+				"reason": "$string:media_internet_status"
+			}
+		],
+		"dependencies": [
+			{
+				"bundleName": "com.ohos.previewkit",
+				"moduleName": "previewkit",
+				"versionCode": 1000000
+			},
+			{
+				"bundleName": "com.ohos.fileaccess",
+				"moduleName": "fileaccess",
+				"versionCode": 1000000
+			}
+		],
+		"packageName": "entry"
+	}
+}
