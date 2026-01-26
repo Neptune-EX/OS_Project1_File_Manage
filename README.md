@@ -36,6 +36,7 @@
 3. DevEco Studio版本：DevEco Studio 6.0.0 Release及以上。
 4. HarmonyOS SDK版本：HarmonyOS 6.0.0 Release SDK及以上。
 
+---
 
 ## 正式软件功能部分
 
@@ -123,6 +124,8 @@
 - `context`用法极为精妙
 
 ---
+
+
 
 ## 2. 文件展示
 
@@ -242,7 +245,6 @@ interface PreviewConfig {
 ```
 
 ---
-
 
 
 ## 3. 文件读取
@@ -595,6 +597,8 @@ private async extractPdfTextWithPDFKit(filePath: string): Promise<string> {
 
 ```
 
+---
+
 ## 4. 本地关键词提取
 
 ### 关联代码
@@ -691,6 +695,8 @@ private async extractPdfTextWithPDFKit(filePath: string): Promise<string> {
 - **内容提取粗糙**-：关键词仅筛选分割后字符串，无法“理解”文义
 
 因此，为满足智能化需求，我们将文档与Deepseek通过API远程链接起来，以实现`重复笔记检测`，`自动摘要生成`，`高性能检索`
+
+---
 
 ## 5. Deepseek接入
 ### 关联代码
@@ -915,9 +921,6 @@ private async extractPdfTextWithPDFKit(filePath: string): Promise<string> {
   }
 
 ```
-## 版本总结：
-
-`20260124` 完成了基本框架，完成本地简单智能化代码编写，完成Deepseek接入并完成连通性测试
 
 ---
 
@@ -1168,12 +1171,276 @@ interface KnowledgeLink {
 
 ---
 
+## 7. 文件查重与合并
+
+### 关联文件
+`entry/src/main/ets/common/utils/WriteFile.ets`，`entry/src/main/ets/common/utils/DiffUtils.ets`
+
+### 实现原理
+- 基于行合并：（目前采用）
+  | 步骤 | 文档1元素 | 文档2元素 | 合并结果 | 类型说明 |
+  |------|----------|----------|----------|----------|
+  | 1 | A | A | **A** | 相同内容，只保留一次 |
+  | 2 | B | B | **B** | 相同内容，只保留一次 |
+  | 3 | C | - | **C** | 文档1独有内容 |
+  | 4 | - | F | **F** | 文档2独有内容 |
+  | 5 | D | D | **D** | 相同内容，只保留一次 |
+  | 6 | E | - | **E** | 文档1独有内容 |
+  | 7 | - | G | **G** | 文档2独有内容 |    
+
+
+- 基于段落合并：实现了保持语义完整性，避免句子碎片化 ，提升可读性。
+
+### 核心代码
+
+```typescript
+// 计算文档相似度
+  private async calculateSimilarity(): Promise<void> {
+    if (!this.similarityCalculator || this.documentContents.size < 2) {
+      return;
+    }
+
+    try {
+      this.showToast('正在计算文档相似度...', 'info');
+
+      const results = await this.similarityCalculator.batchCalculateSimilarity(
+        this.documentContents,
+        0.25 // 相似度阈值
+      );
+
+      // 转换为 SimilarDoc 格式
+      const similarResults: SimilarDoc[] = [];
+      results.forEach((r): void => {
+        similarResults.push({
+          file1: r.file1,
+          file2: r.file2,
+          score: r.score,
+          sharedTerms: r.sharedTerms
+        });
+      });
+
+      this.similarDocs = similarResults.slice(0, 20); // 最多显示20对
+
+      if (this.similarDocs.length > 0) {
+        this.showToast(`发现 ${this.similarDocs.length} 对相似文档`, 'success');
+        this.showSimilarPanel = true;
+      }
+    } catch (error) {
+      console.error('[SmartClassifyTab] 相似度计算失败:', JSON.stringify(error));
+    }
+  }
+
+  // 显示差异对比
+  private async showDiff(file1: string, file2: string): Promise<void> {
+    const content1 = this.documentContents.get(file1) || '';
+    const content2 = this.documentContents.get(file2) || '';
+
+    if (!content1 || !content2) {
+      this.showToast('无法读取文件内容', 'error');
+      return;
+    }
+
+    this.diffFile1 = file1;
+    this.diffFile2 = file2;
+    this.diffResult = DiffUtils.diff(content1, content2);
+    this.showDiffPanel = true;
+  }
+
+
+  // 清理合并后的内容
+  private cleanMergedContent(content: string): string {
+    if (!content) return '';
+
+    // 移除连续的空行
+    let cleaned = content.replace(/\n\s*\n\s*\n/g, '\n\n');
+
+    // 移除开头和结尾的空白
+    cleaned = cleaned.trim();
+
+    // 确保句子以标点结尾
+    if (cleaned.length > 0) {
+      const lastChar = cleaned.charAt(cleaned.length - 1);
+      const punctuation = '。！？.!?;；';
+      if (!punctuation.includes(lastChar)) {
+        cleaned += '。';
+      }
+    }
+
+    return cleaned;
+  }
+
+  
+
+  // 合并两个文档，去除重复部分，保留所有非重复内容
+  private async mergeDocuments(file1: string, file2: string): Promise<string> {
+    try {
+      const content1 = this.documentContents.get(file1) || '';
+      const content2 = this.documentContents.get(file2) || '';
+
+      if (!content1 || !content2) {
+        this.showToast('无法读取文件内容', 'error');
+        return '';
+      }
+
+      // 计算差异
+      const diffResult = DiffUtils.diff(content1, content2);
+
+      if (diffResult.similarity >= 0.99) {
+        // 如果几乎完全相同，返回任一文档即可
+        return content1;
+      }
+
+      // 智能合并策略
+      const mergedContent = await this.smartMergeContent(diffResult);
+      return mergedContent;
+    } catch (error) {
+      console.error('[SmartClassifyTab] 合并文档失败:', error);
+      this.showToast('合并失败', 'error');
+      return '';
+    }
+  }
+
+  // 智能合并内容
+  private async smartMergeContent(diffResult: DiffResult): Promise<string> {
+    // 策略1：基于行的智能合并
+    const lineBased = this.mergeByLine(diffResult);
+
+    // 策略2：基于段落的重构（更高级）
+    const paragraphBased = await this.mergeByParagraph(diffResult);
+
+    // 选择更好的合并结果（按字数或质量）
+    // return lineBased
+    return lineBased.length > paragraphBased.length ? lineBased : paragraphBased;
+  }
+
+  // 基于行的合并策略
+  private mergeByLine(diffResult: DiffResult): string {
+    const mergedLines: string[] = [];
+    let inSameBlock = false;
+
+    diffResult.lines.forEach((line: DiffLine, index: number): void => {
+      switch (line.type) {
+        case DiffType.SAME:
+          // 相同内容只保留一次
+          if (!inSameBlock) {
+            mergedLines.push(line.content);
+            inSameBlock = true;
+          }
+          break;
+
+        case DiffType.REMOVED:
+          // file1独有的内容
+          mergedLines.push(line.content);
+          inSameBlock = false;
+          break;
+
+        case DiffType.ADDED:
+          // file2独有的内容
+          mergedLines.push(line.content);
+          inSameBlock = false;
+          break;
+      }
+
+      // // 检查是否需要添加换行（保持段落结构）
+      // if (this.shouldAddLineBreak(line, diffResult.lines[index + 1])) {
+      //   mergedLines.push('');
+      // }
+    });
+
+    return this.cleanMergedContent(mergedLines.join('\n'));
+  }
+
+  // 基于段落的合并策略（更智能）
+  private async mergeByParagraph(diffResult: DiffResult): Promise<string> {
+    // 将内容按段落分割
+    const paragraphs1 = this.extractParagraphsFromDiff(diffResult, DiffType.REMOVED, DiffType.SAME);
+    const paragraphs2 = this.extractParagraphsFromDiff(diffResult, DiffType.ADDED, DiffType.SAME);
+
+    // 合并段落（去除重复段落）
+    const uniqueParagraphs = this.mergeUniqueParagraphs(paragraphs1, paragraphs2);
+
+    // 重排序段落（基于语义相似度）
+    const reorderedParagraphs = await this.reorderParagraphs(uniqueParagraphs);
+
+    return reorderedParagraphs.join('\n\n');
+  }
+
+  // 从差异结果中提取段落
+  private extractParagraphsFromDiff(diffResult: DiffResult, ...types: DiffType[]): string[] {
+    const paragraphs: string[] = [];
+    let currentParagraph: string[] = [];
+
+    diffResult.lines.forEach((line: DiffLine): void => {
+      if (types.includes(line.type)) {
+        currentParagraph.push(line.content);
+      } else if (currentParagraph.length > 0) {
+        // 段落结束
+        paragraphs.push(currentParagraph.join(' '));
+        currentParagraph = [];
+      }
+    });
+
+    // 处理最后一个段落
+    if (currentParagraph.length > 0) {
+      paragraphs.push(currentParagraph.join(' '));
+    }
+
+    return paragraphs.filter(p => p.trim().length > 0);
+  }
+
+  // 合并独特段落
+  private mergeUniqueParagraphs(paragraphs1: string[], paragraphs2: string[]): string[] {
+    const allParagraphs = [...paragraphs1, ...paragraphs2];
+    const uniqueParagraphs: string[] = [];
+    const seenParagraphs = new Set<string>();
+
+    // 基于内容哈希去重
+    allParagraphs.forEach((paragraph: string): void => {
+      const normalized = this.normalizeText(paragraph);
+      if (!seenParagraphs.has(normalized) && paragraph.trim().length > 10) {
+        uniqueParagraphs.push(paragraph);
+        seenParagraphs.add(normalized);
+      }
+    });
+
+    return uniqueParagraphs;
+  }
+
+  // 重排序段落（基于相似度）
+  private async reorderParagraphs(paragraphs: string[]): Promise<string[]> {
+    if (paragraphs.length <= 1) return paragraphs;
+
+    // 简单策略：按长度排序（长的在前，短的在后）
+    return paragraphs.sort((a: string, b: string): number => {
+      return b.length - a.length;
+    });
+
+    // 高级策略：可以使用AI或更复杂的算法来重排序
+    // 例如：基于主题连贯性、时间顺序等
+  }
+
+  // 规范化文本（用于比较）
+  private normalizeText(text: string): string {
+    return text
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .replace(/[^\w\u4e00-\u9fa5]/g, '')
+      .trim();
+  }
+
+
+```
+
+---
+
 ## 版本总结（更新）：
 
-`20260124` 完成了基本框架，完成本地简单智能化代码编写，完成Deepseek接入并完成连通性测试
+`20260124-v1` 完成了基本框架，完成本地简单智能化代码编写，完成Deepseek接入并完成连通性测试
 
 `20260124-v2` 新增知识图谱功能：
 - 实现力导向布局算法（GraphLayout.ets）
 - 创建独立知识图谱页面（KnowledgeGraphPage.ets）
 - 支持节点拖拽、点击查看详情
 - Canvas 绘制连线确保坐标系一致
+
+`20260126` 实现了重复文件的合并

@@ -585,51 +585,7 @@ export struct SmartClassifyTab {
     this.showDiffPanel = true;
   }
 
-  // // 合并两个文档，去除重复部分
-  // private async mergeDocuments(file1: string, file2: string): Promise<string> {
-  //   try {
-  //     const content1 = this.documentContents.get(file1) || '';
-  //     const content2 = this.documentContents.get(file2) || '';
-  //
-  //     if (!content1 || !content2) {
-  //       this.showToast('无法读取文件内容', 'error');
-  //       return '';
-  //     }
-  //
-  //     // 计算差异
-  //     const diffResult = DiffUtils.diff(content1, content2);
-  //
-  //     if (diffResult.similarity >= 0.99) {
-  //       // 如果几乎完全相同，返回任一文档即可
-  //       return content1;
-  //     }
-  //
-  //     // 合并策略：保留file1的内容 + file2中新增的内容
-  //     const mergedLines: string[] = [];
-  //     let lastLineType = DiffType.SAME;
-  //
-  //     diffResult.lines.forEach((line: DiffLine): void => {
-  //       if (line.type === DiffType.SAME) {
-  //         // 相同部分只保留一次（来自file1）
-  //         mergedLines.push(line.content);
-  //       } else if (line.type === DiffType.ADDED) {
-  //         // 只保留新增部分（file2有而file1没有）
-  //         mergedLines.push(line.content);
-  //       }
-  //       // 忽略删除部分（file1有而file2没有）
-  //       lastLineType = line.type;
-  //     });
-  //
-  //     // 清理合并结果
-  //     const mergedContent = this.cleanMergedContent(mergedLines.join('\n'));
-  //     return mergedContent;
-  //   } catch (error) {
-  //     console.error('[SmartClassifyTab] 合并文档失败:', error);
-  //     this.showToast('合并失败', 'error');
-  //     return '';
-  //   }
-  // }
-  //
+
   // 清理合并后的内容
   private cleanMergedContent(content: string): string {
     if (!content) return '';
@@ -652,54 +608,7 @@ export struct SmartClassifyTab {
     return cleaned;
   }
 
-  // // 保存合并后的文档
-  // private async saveMergedDocument(originalFile1: string, originalFile2: string, content: string): Promise<string> {
-  //   try {
-  //     if (!content || content.trim().length < 10) {
-  //       this.showToast('合并内容过少', 'warning');
-  //       return '';
-  //     }
-  //
-  //     // 生成新文件名
-  //     // const timestamp = new Date().getTime();
-  //     const baseName1 = originalFile1.replace(/\.[^/.]+$/, '');
-  //     const baseName2 = originalFile2.replace(/\.[^/.]+$/, '');
-  //     const newFilename = `合并_${baseName1}_${baseName2}_Merged.txt`;
-  //
-  //     // 保存文件
-  //     const filePath = `${this.filesDir}/${newFilename}`;
-  //     const file = fileIo.openSync(filePath,
-  //       fileIo.OpenMode.CREATE | fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.TRUNC);
-  //
-  //     const encoder = new util.TextEncoder();
-  //     const data = encoder.encodeInto(content);
-  //     fileIo.writeSync(file.fd, data.buffer);
-  //     fileIo.closeSync(file);
-  //
-  //     this.showToast(`合并完成: ${newFilename}`, 'success');
-  //
-  //     // 将新文件添加到列表
-  //     const newFile: FileAnalysis = {
-  //       filename: newFilename,
-  //       category: DocumentCategory.OTHER,
-  //       categoryName: '未分类',
-  //       confidence: 0,
-  //       keywords: [],
-  //       summary: '',
-  //       wordCount: content.length,
-  //       isAnalyzed: false
-  //     };
-  //
-  //     this.fileList = [...this.fileList, newFile];
-  //     this.documentContents.set(newFilename, content);
-  //
-  //     return newFilename;
-  //   }catch (error) {
-  //     console.error('[SmartClassifyTab] 保存合并文档失败:', error);
-  //     this.showToast('保存失败', 'error');
-  //     return '';
-  //   }
-  // }
+
 
   // 合并两个文档，去除重复部分，保留所有非重复内容
   private async mergeDocuments(file1: string, file2: string): Promise<string> {
