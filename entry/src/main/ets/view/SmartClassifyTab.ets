@@ -585,51 +585,51 @@ export struct SmartClassifyTab {
     this.showDiffPanel = true;
   }
 
-  // 合并两个文档，去除重复部分
-  private async mergeDocuments(file1: string, file2: string): Promise<string> {
-    try {
-      const content1 = this.documentContents.get(file1) || '';
-      const content2 = this.documentContents.get(file2) || '';
-
-      if (!content1 || !content2) {
-        this.showToast('无法读取文件内容', 'error');
-        return '';
-      }
-
-      // 计算差异
-      const diffResult = DiffUtils.diff(content1, content2);
-
-      if (diffResult.similarity >= 0.99) {
-        // 如果几乎完全相同，返回任一文档即可
-        return content1;
-      }
-
-      // 合并策略：保留file1的内容 + file2中新增的内容
-      const mergedLines: string[] = [];
-      let lastLineType = DiffType.SAME;
-
-      diffResult.lines.forEach((line: DiffLine): void => {
-        if (line.type === DiffType.SAME) {
-          // 相同部分只保留一次（来自file1）
-          mergedLines.push(line.content);
-        } else if (line.type === DiffType.ADDED) {
-          // 只保留新增部分（file2有而file1没有）
-          mergedLines.push(line.content);
-        }
-        // 忽略删除部分（file1有而file2没有）
-        lastLineType = line.type;
-      });
-
-      // 清理合并结果
-      const mergedContent = this.cleanMergedContent(mergedLines.join('\n'));
-      return mergedContent;
-    } catch (error) {
-      console.error('[SmartClassifyTab] 合并文档失败:', error);
-      this.showToast('合并失败', 'error');
-      return '';
-    }
-  }
-
+  // // 合并两个文档，去除重复部分
+  // private async mergeDocuments(file1: string, file2: string): Promise<string> {
+  //   try {
+  //     const content1 = this.documentContents.get(file1) || '';
+  //     const content2 = this.documentContents.get(file2) || '';
+  //
+  //     if (!content1 || !content2) {
+  //       this.showToast('无法读取文件内容', 'error');
+  //       return '';
+  //     }
+  //
+  //     // 计算差异
+  //     const diffResult = DiffUtils.diff(content1, content2);
+  //
+  //     if (diffResult.similarity >= 0.99) {
+  //       // 如果几乎完全相同，返回任一文档即可
+  //       return content1;
+  //     }
+  //
+  //     // 合并策略：保留file1的内容 + file2中新增的内容
+  //     const mergedLines: string[] = [];
+  //     let lastLineType = DiffType.SAME;
+  //
+  //     diffResult.lines.forEach((line: DiffLine): void => {
+  //       if (line.type === DiffType.SAME) {
+  //         // 相同部分只保留一次（来自file1）
+  //         mergedLines.push(line.content);
+  //       } else if (line.type === DiffType.ADDED) {
+  //         // 只保留新增部分（file2有而file1没有）
+  //         mergedLines.push(line.content);
+  //       }
+  //       // 忽略删除部分（file1有而file2没有）
+  //       lastLineType = line.type;
+  //     });
+  //
+  //     // 清理合并结果
+  //     const mergedContent = this.cleanMergedContent(mergedLines.join('\n'));
+  //     return mergedContent;
+  //   } catch (error) {
+  //     console.error('[SmartClassifyTab] 合并文档失败:', error);
+  //     this.showToast('合并失败', 'error');
+  //     return '';
+  //   }
+  // }
+  //
   // 清理合并后的内容
   private cleanMergedContent(content: string): string {
     if (!content) return '';
@@ -652,46 +652,272 @@ export struct SmartClassifyTab {
     return cleaned;
   }
 
-  // 保存合并后的文档
-  private async saveMergedDocument(originalFile1: string, originalFile2: string, content: string): Promise<string> {
+  // // 保存合并后的文档
+  // private async saveMergedDocument(originalFile1: string, originalFile2: string, content: string): Promise<string> {
+  //   try {
+  //     if (!content || content.trim().length < 10) {
+  //       this.showToast('合并内容过少', 'warning');
+  //       return '';
+  //     }
+  //
+  //     // 生成新文件名
+  //     // const timestamp = new Date().getTime();
+  //     const baseName1 = originalFile1.replace(/\.[^/.]+$/, '');
+  //     const baseName2 = originalFile2.replace(/\.[^/.]+$/, '');
+  //     const newFilename = `合并_${baseName1}_${baseName2}_Merged.txt`;
+  //
+  //     // 保存文件
+  //     const filePath = `${this.filesDir}/${newFilename}`;
+  //     const file = fileIo.openSync(filePath,
+  //       fileIo.OpenMode.CREATE | fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.TRUNC);
+  //
+  //     const encoder = new util.TextEncoder();
+  //     const data = encoder.encodeInto(content);
+  //     fileIo.writeSync(file.fd, data.buffer);
+  //     fileIo.closeSync(file);
+  //
+  //     this.showToast(`合并完成: ${newFilename}`, 'success');
+  //
+  //     // 将新文件添加到列表
+  //     const newFile: FileAnalysis = {
+  //       filename: newFilename,
+  //       category: DocumentCategory.OTHER,
+  //       categoryName: '未分类',
+  //       confidence: 0,
+  //       keywords: [],
+  //       summary: '',
+  //       wordCount: content.length,
+  //       isAnalyzed: false
+  //     };
+  //
+  //     this.fileList = [...this.fileList, newFile];
+  //     this.documentContents.set(newFilename, content);
+  //
+  //     return newFilename;
+  //   }catch (error) {
+  //     console.error('[SmartClassifyTab] 保存合并文档失败:', error);
+  //     this.showToast('保存失败', 'error');
+  //     return '';
+  //   }
+  // }
+
+  // 合并两个文档，去除重复部分，保留所有非重复内容
+  private async mergeDocuments(file1: string, file2: string): Promise<string> {
     try {
-      if (!content || content.trim().length < 10) {
-        this.showToast('合并内容过少', 'warning');
+      const content1 = this.documentContents.get(file1) || '';
+      const content2 = this.documentContents.get(file2) || '';
+
+      if (!content1 || !content2) {
+        this.showToast('无法读取文件内容', 'error');
         return '';
       }
 
-      // 生成新文件名
-      // const timestamp = new Date().getTime();
-      const baseName1 = originalFile1.replace(/\.[^/.]+$/, '');
-      const baseName2 = originalFile2.replace(/\.[^/.]+$/, '');
-      const newFilename = `合并_${baseName1}_${baseName2}_Merged.txt`;
+      // 计算差异
+      const diffResult = DiffUtils.diff(content1, content2);
+
+      if (diffResult.similarity >= 0.99) {
+        // 如果几乎完全相同，返回任一文档即可
+        return content1;
+      }
+
+      // 智能合并策略
+      const mergedContent = await this.smartMergeContent(diffResult);
+      return mergedContent;
+    } catch (error) {
+      console.error('[SmartClassifyTab] 合并文档失败:', error);
+      this.showToast('合并失败', 'error');
+      return '';
+    }
+  }
+
+  // 智能合并内容
+  private async smartMergeContent(diffResult: DiffResult): Promise<string> {
+    // 策略1：基于行的智能合并
+    const lineBased = this.mergeByLine(diffResult);
+
+    // 策略2：基于段落的重构（更高级）
+    const paragraphBased = await this.mergeByParagraph(diffResult);
+
+    // 选择更好的合并结果（按字数或质量）
+    // return lineBased
+    return lineBased.length > paragraphBased.length ? lineBased : paragraphBased;
+  }
+
+  // 基于行的合并策略
+  private mergeByLine(diffResult: DiffResult): string {
+    const mergedLines: string[] = [];
+    let inSameBlock = false;
+
+    diffResult.lines.forEach((line: DiffLine, index: number): void => {
+      switch (line.type) {
+        case DiffType.SAME:
+          // 相同内容只保留一次
+          if (!inSameBlock) {
+            mergedLines.push(line.content);
+            inSameBlock = true;
+          }
+          break;
+
+        case DiffType.REMOVED:
+          // file1独有的内容
+          mergedLines.push(line.content);
+          inSameBlock = false;
+          break;
+
+        case DiffType.ADDED:
+          // file2独有的内容
+          mergedLines.push(line.content);
+          inSameBlock = false;
+          break;
+      }
+
+      // // 检查是否需要添加换行（保持段落结构）
+      // if (this.shouldAddLineBreak(line, diffResult.lines[index + 1])) {
+      //   mergedLines.push('');
+      // }
+    });
+
+    return this.cleanMergedContent(mergedLines.join('\n'));
+  }
+
+  // 基于段落的合并策略（更智能）
+  private async mergeByParagraph(diffResult: DiffResult): Promise<string> {
+    // 将内容按段落分割
+    const paragraphs1 = this.extractParagraphsFromDiff(diffResult, DiffType.REMOVED, DiffType.SAME);
+    const paragraphs2 = this.extractParagraphsFromDiff(diffResult, DiffType.ADDED, DiffType.SAME);
+
+    // 合并段落（去除重复段落）
+    const uniqueParagraphs = this.mergeUniqueParagraphs(paragraphs1, paragraphs2);
+
+    // 重排序段落（基于语义相似度）
+    const reorderedParagraphs = await this.reorderParagraphs(uniqueParagraphs);
+
+    return reorderedParagraphs.join('\n\n');
+  }
+
+  // 从差异结果中提取段落
+  private extractParagraphsFromDiff(diffResult: DiffResult, ...types: DiffType[]): string[] {
+    const paragraphs: string[] = [];
+    let currentParagraph: string[] = [];
+
+    diffResult.lines.forEach((line: DiffLine): void => {
+      if (types.includes(line.type)) {
+        currentParagraph.push(line.content);
+      } else if (currentParagraph.length > 0) {
+        // 段落结束
+        paragraphs.push(currentParagraph.join(' '));
+        currentParagraph = [];
+      }
+    });
+
+    // 处理最后一个段落
+    if (currentParagraph.length > 0) {
+      paragraphs.push(currentParagraph.join(' '));
+    }
+
+    return paragraphs.filter(p => p.trim().length > 0);
+  }
+
+  // 合并独特段落
+  private mergeUniqueParagraphs(paragraphs1: string[], paragraphs2: string[]): string[] {
+    const allParagraphs = [...paragraphs1, ...paragraphs2];
+    const uniqueParagraphs: string[] = [];
+    const seenParagraphs = new Set<string>();
+
+    // 基于内容哈希去重
+    allParagraphs.forEach((paragraph: string): void => {
+      const normalized = this.normalizeText(paragraph);
+      if (!seenParagraphs.has(normalized) && paragraph.trim().length > 10) {
+        uniqueParagraphs.push(paragraph);
+        seenParagraphs.add(normalized);
+      }
+    });
+
+    return uniqueParagraphs;
+  }
+
+  // 重排序段落（基于相似度）
+  private async reorderParagraphs(paragraphs: string[]): Promise<string[]> {
+    if (paragraphs.length <= 1) return paragraphs;
+
+    // 简单策略：按长度排序（长的在前，短的在后）
+    return paragraphs.sort((a: string, b: string): number => {
+      return b.length - a.length;
+    });
+
+    // 高级策略：可以使用AI或更复杂的算法来重排序
+    // 例如：基于主题连贯性、时间顺序等
+  }
+
+  // 规范化文本（用于比较）
+  private normalizeText(text: string): string {
+    return text
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .replace(/[^\w\u4e00-\u9fa5]/g, '')
+      .trim();
+  }
+
+  // 判断是否应该添加换行
+  private shouldAddLineBreak(currentLine: DiffLine, nextLine?: DiffLine): boolean {
+    if (!nextLine) return false;
+
+    // 当前行以句号结尾且下一行不以空白开头
+    const endsWithPunctuation = /[。！？.!?;；]$/.test(currentLine.content.trim());
+    const nextStartsWithNewTopic = /^(第[一二三四五六七八九十]|[0-9]+\.|•|-)/
+      .test(nextLine.content.trim());
+
+    return endsWithPunctuation || nextStartsWithNewTopic;
+  }
+
+  // 保存合并后的文档（增强版）
+  private async saveMergedDocument(file1: string, file2: string, content: string): Promise<string> {
+    try {
+      if (!content || content.trim().length < 20) {
+        this.showToast('合并内容过少，无法保存', 'warning');
+        return '';
+      }
+
+      // 生成更有意义的文件名
+      const baseName1 = this.extractBaseName(file1);
+      const baseName2 = this.extractBaseName(file2);
+
+      // 分析合并后文档的主题
+      const keywords = this.extractKeywords(content).slice(0, 3);
+      const mainTopic = keywords.length > 0 ? keywords[0] : '合并';
+
+      const timestamp = new Date().getTime();
+      const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+
+      const newFilename = `Merge_${baseName1}_${baseName2}_at_${dateStr}.txt`;
 
       // 保存文件
       const filePath = `${this.filesDir}/${newFilename}`;
-      const file = fileIo.openSync(filePath,
-        fileIo.OpenMode.CREATE | fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.TRUNC);
+      const file = fileIo.openSync(
+        filePath,
+        fileIo.OpenMode.CREATE | fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.TRUNC
+      );
 
       const encoder = new util.TextEncoder();
-      const data = encoder.encodeInto(content);
-      fileIo.writeSync(file.fd, data.buffer);
+      const encodedContent = encoder.encodeInto(content);
+      fileIo.writeSync(file.fd, encodedContent.buffer);
       fileIo.closeSync(file);
+
+      // 添加元信息头部
+      const enhancedContent = this.addMetadataHeader(content, file1, file2, newFilename);
+      // 重新写入增强的内容
+      const file2write = fileIo.openSync(
+        filePath,
+        fileIo.OpenMode.WRITE_ONLY | fileIo.OpenMode.TRUNC
+      );
+      const encodedEnhanced = encoder.encodeInto(enhancedContent);
+      fileIo.writeSync(file2write.fd, encodedEnhanced.buffer);
+      fileIo.closeSync(file2write);
 
       this.showToast(`合并完成: ${newFilename}`, 'success');
 
-      // 将新文件添加到列表
-      const newFile: FileAnalysis = {
-        filename: newFilename,
-        category: DocumentCategory.OTHER,
-        categoryName: '未分类',
-        confidence: 0,
-        keywords: [],
-        summary: '',
-        wordCount: content.length,
-        isAnalyzed: false
-      };
-
-      this.fileList = [...this.fileList, newFile];
-      this.documentContents.set(newFilename, content);
+      // 将新文件添加到列表并自动分析
+      await this.addAndAnalyzeNewFile(newFilename, enhancedContent);
 
       return newFilename;
     }catch (error) {
@@ -699,6 +925,62 @@ export struct SmartClassifyTab {
       this.showToast('保存失败', 'error');
       return '';
     }
+  }
+
+  // 添加元信息头部
+  private addMetadataHeader(content: string, source1: string, source2: string, newFilename: string): string {
+    const header = [
+      `合并文档: ${newFilename}`,
+      `来源文件:`,
+      `- ${source1}`,
+      `- ${source2}`,
+      `合并时间: ${new Date().toLocaleString()}`,
+      `总字数: ${content.length}`,
+      `---`,
+      ''
+    ].join('\n');
+
+    return header + content;
+  }
+
+  // 提取基础名称
+  private extractBaseName(filename: string): string {
+    const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
+    // 截取前10个字符，避免文件名过长
+    return nameWithoutExt.substring(0, 10);
+  }
+
+  // 添加并分析新文件
+  private async addAndAnalyzeNewFile(filename: string, content: string): Promise<void> {
+    // 添加到内容映射
+    this.documentContents.set(filename, content);
+
+    // 创建文件分析对象
+    const newFile: FileAnalysis = {
+      filename: filename,
+      category: DocumentCategory.OTHER,
+      categoryName: '未分类',
+      confidence: 0,
+      keywords: [],
+      summary: '',
+      wordCount: content.length,
+      isAnalyzed: false
+    };
+
+    // 添加到文件列表
+    this.fileList = [...this.fileList, newFile];
+
+    // 异步分析新文件
+    setTimeout(async (): Promise<void> => {
+      const index = this.fileList.findIndex(f => f.filename === filename);
+      if (index >= 0) {
+        const analyzed = await this.analyzeFile(index);
+        if (analyzed) {
+          this.fileList[index] = analyzed;
+          this.fileList = this.fileList.slice();
+        }
+      }
+    }, 500);
   }
 
 
