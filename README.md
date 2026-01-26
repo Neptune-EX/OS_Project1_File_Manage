@@ -374,7 +374,7 @@ interface PreviewConfig {
 
 ### (3) PDF文件读取
 
-鸿蒙开发文档中有讲：PDF Kit（PDF服务）：X86版本不支持。因此不采用该方法进行PDF的读取。而且现行的东西不支持读取大容量的PDF文件，会卡死！因此使用最简单的
+鸿蒙开发文档中有讲：PDF Kit（PDF服务）：X86版本不支持。因此不采用该方法进行PDF的读取。而且现行的东西不支持读取大容量的PDF文件，会卡死！因此使用最简单的二进制文本转`uft-8`编码的方式提取
 
 
 未采用：使用`PDFKit`的PDF文本解析，通过`读取图片+文字识别`解决文本提取问题
@@ -594,13 +594,6 @@ private async extractPdfTextWithPDFKit(filePath: string): Promise<string> {
   }
 
 ```
-
-
-
-
-
-
-
 
 ## 4. 本地关键词提取
 
